@@ -2,7 +2,7 @@
 
 *A multi-channel real-time audio mixer & recorder*
 
-**Status:** v0.3 (requirements confirmed; Phase 0 in progress)
+**Status:** v0.4 (requirements confirmed; Phase 0 in progress)
 **Target platforms:** Windows 10 / 11 (x64) first; macOS and Linux later
 **License:** GNU AGPLv3 (see [§3.5](#35-licensing-open-source))
 **Repository:** <https://github.com/dl33ds/stage-plot-mixer>
@@ -474,6 +474,7 @@ Phases 5 and 7 are largely independent of 3–4 and can move earlier if needed.
 ---
 
 ## 12. Change History
+- **v0.4**: Confirmed the multiple-capture-points interpretation (R12). From the first Scarlett test run: Windows shared-mode audio (fixed 10 ms buffer, dropouts) is confirmed unsuitable for live paths, and spm-diag now ranks and recommends ASIO.
 - **v0.3**: Named *Stage Plot Mixer*; public repo; AGPLv3 accepted; JUCE 9.0.2 (bundles ASIO headers); VST3 + LADSPA only; multiple capture points; no console view; test hardware is the Scarlett Solo for now, with FireWire validation later (Phase 0b).
 - **v0.2**: Incorporated requirements: live sound + home studio; target hardware list; 32 ch @ 48 kHz; record only; app audio input; open source; VST/LADSPA; node-based hierarchical UI; font choice.
 - **v0.1**: Initial draft.
@@ -482,4 +483,4 @@ Phases 5 and 7 are largely independent of 3–4 and can move earlier if needed.
 
 ## 13. Open Questions
 
-1. **Capture points (R12):** Confirm the interpretation: any number of App Audio nodes (per-application and/or whole-system) plus Recorder nodes anywhere in the graph.
+None at present. (Resolved in v0.4: capture points (R12) confirmed as any number of App Audio nodes plus Recorder nodes anywhere in the graph.)

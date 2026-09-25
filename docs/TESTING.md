@@ -24,13 +24,14 @@ The first time you run it, Windows may show *"Windows protected your PC"*. The p
 
 1. Double-click **spm-diag.exe**. It lists your system and all audio devices.
 2. At the menu, type `1` (Stability & input level test) and press Enter.
-3. Choose the **ASIO: Focusrite USB ASIO** device number.
+3. Choose the **ASIO: Focusrite USB ASIO** device. It's listed first and marked `<- recommended`, so pressing Enter picks it.
+   Don't choose a **Windows Audio** entry for this test. Those go through the Windows mixer, ignore the buffer size, and are expected to glitch (that's Test C).
 4. Press Enter to accept 48000 Hz, the default buffer size and 60 seconds.
 5. While it runs, **speak into the mic or play into the inputs**. The `in:` meters should move:
    `.` silent, `-` quiet, `=` medium, `+` loud, `#` very loud, `X` clipping.
 6. Repeat the test with buffer sizes **128** and **64**.
 
-**What we're looking for:** `Stability test: PASS`, 0 late callbacks, and each input showing a level when used.
+**What we're looking for:** `Stability test: PASS`, 0 late callbacks, and each input showing a level when used. If a result isn't PASS, the line above it gives the reason. `CLIPPED` means the input gain is too high; it doesn't cause a FAIL.
 
 ## 4. Test B: Round-trip latency (about 1 minute)
 

@@ -107,6 +107,9 @@ std::unique_ptr<juce::AudioIODevice> openDevice (Console& console, juce::AudioIO
                   + msText (device->getCurrentBufferSizeSamples(), actualRate) + ")"
                   + (settings.bufferSize > 0 && device->getCurrentBufferSizeSamples() != settings.bufferSize
                          ? "  (requested " + juce::String (settings.bufferSize) + ")" : juce::String()));
+    if (settings.bufferSize > 0 && device->getCurrentBufferSizeSamples() != settings.bufferSize
+        && device->getAvailableBufferSizes().size() <= 1)
+        console.line ("                    This driver type has a fixed buffer size; the request was ignored.");
     console.line ("  Bit depth:        " + juce::String (device->getCurrentBitDepth()));
     console.line ("  Active channels:  " + juce::String (device->getActiveInputChannels().countNumberOfSetBits()) + " in, "
                   + juce::String (device->getActiveOutputChannels().countNumberOfSetBits()) + " out");
@@ -353,22 +356,44 @@ TestResult runStabilityTest (Console& console, juce::AudioIODeviceType& type,
                       + (clips > 0 ? "   CLIPPED in " + juce::String (clips) + " blocks" : juce::String()));
     }
 
+    juce::StringArray clipped;
+    for (int ch = 0; ch < callback.stats.getNumInputChannels(); ++ch)
+        if (callback.stats.getClipCount (ch) > 0)
+            clipped.add (juce::String (ch + 1));
+
+    if (! clipped.isEmpty())
+    {
+        console.line ("    Input " + clipped.joinIntoString (", ") + " clipped. That's a level problem, not a driver one:");
+        console.line ("    turn the gain down until loud peaks stay around -6 dBFS (the '#' glyph, never 'X').");
+    }
+
+    console.line();
     auto result = TestResult::pass;
 
     if (! stillPlaying || s.callbacks == 0)
     {
-        console.line ("    The device stopped during the test.");
+        console.line ("  Reason: the device stopped during the test.");
         result = TestResult::fail;
     }
     else if (xruns > 0)
     {
+        console.line ("  Reason: the driver reported " + juce::String (xruns) + " dropout" + (xruns == 1 ? "" : "s")
+                      + " (xruns). Each one is an audible click or gap.");
         result = TestResult::fail;
     }
     else if (s.lateCallbacks > 0)
     {
+        console.line ("  Reason: " + juce::String (s.lateCallbacks) + " callback" + (s.lateCallbacks == 1 ? "" : "s")
+                      + " arrived late, but the driver reported no dropouts.");
+        console.line ("  If audio clicked, try a larger buffer size, the 'High performance' power plan,");
+        console.line ("  or disabling Wi-Fi/Bluetooth during the test.");
         result = TestResult::warning;
-        console.line ("    Some callbacks arrived late. If audio clicked, try a larger buffer size,");
-        console.line ("    the 'High performance' power plan, or disabling Wi-Fi/Bluetooth during the test.");
+    }
+
+    if (result != TestResult::pass && (type.getTypeName() == "Windows Audio" || type.getTypeName() == "DirectSound"))
+    {
+        console.line ("  This is common for " + type.getTypeName() + ", which shares the Windows mixer with other apps.");
+        console.line ("  Stage Plot Mixer uses ASIO for live audio; repeat this test with the interface's ASIO driver.");
     }
 
     console.line ("  Stability test: " + toString (result));

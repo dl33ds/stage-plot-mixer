@@ -5,8 +5,34 @@
 
 #include "platform/HardwareInfo.h"
 
+#include <algorithm>
+
 namespace spm::diag
 {
+
+/** Lower is better. */
+static int driverRank (const DeviceEntry& e)
+{
+    if (! e.isUsable())
+        return 100;
+
+    if (e.typeName == "ASIO")
+    {
+        // Wrapper drivers sit on top of Windows Audio, so they're no better than it.
+        for (auto* wrapper : { "FL Studio", "ASIO4ALL", "Generic Low Latency", "ASIO2WASAPI" })
+            if (e.name.containsIgnoreCase (wrapper))
+                return 3;
+
+        return 0;
+    }
+
+    if (e.typeName == "Windows Audio (Exclusive Mode)")   return 1;
+    if (e.typeName == "Windows Audio (Low Latency Mode)") return 2;
+    if (e.typeName == "Windows Audio")                    return 4;
+    if (e.typeName == "DirectSound")                      return 5;
+
+    return 0; // CoreAudio, ALSA, JACK: each platform's native path
+}
 
 juce::String DeviceEntry::describe() const
 {
@@ -14,7 +40,7 @@ juce::String DeviceEntry::describe() const
     if (separateInputsAndOutputs)
         direction = isInput ? " (input)" : " (output)";
 
-    return typeName + ": " + name + direction;
+    return typeName + ": " + name + direction + (isUsable() ? "" : "  (not available)");
 }
 
 juce::String DeviceChoice::describe() const
@@ -105,6 +131,28 @@ void DeviceSurvey::scan()
                 probe (name, true, true);
         }
     }
+
+    std::stable_sort (entries.begin(), entries.end(),
+                      [] (const DeviceEntry& a, const DeviceEntry& b) { return driverRank (a) < driverRank (b); });
+}
+
+int DeviceSurvey::getRecommendedIndex() const
+{
+    // Prefer a device that has both inputs and outputs, so every test can run on it.
+    for (int pass = 0; pass < 2; ++pass)
+        for (int i = 0; i < entries.size(); ++i)
+        {
+            const auto& e = entries.getReference (i);
+            if (e.isUsable() && driverRank (e) <= 1
+                && (pass == 1 || (! e.inputChannels.isEmpty() && ! e.outputChannels.isEmpty())))
+                return i;
+        }
+
+    for (int i = 0; i < entries.size(); ++i)
+        if (entries.getReference (i).isUsable())
+            return i;
+
+    return -1;
 }
 
 juce::AudioIODeviceType* DeviceSurvey::findType (const juce::String& typeName) const
@@ -168,11 +216,13 @@ void DeviceSurvey::print (Console& console) const
     if (entries.isEmpty())
         console.line ("  No audio devices found.");
 
+    const auto recommended = getRecommendedIndex();
+
     for (int i = 0; i < entries.size(); ++i)
     {
         const auto& e = entries.getReference (i);
         console.line();
-        console.line ("  [" + juce::String (i + 1) + "] " + e.describe());
+        console.line ("  [" + juce::String (i + 1) + "] " + e.describe() + (i == recommended ? "  <- recommended" : ""));
 
         if (e.error.isNotEmpty())
             console.line ("      Error: " + e.error);

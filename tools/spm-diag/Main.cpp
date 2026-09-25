@@ -134,11 +134,16 @@ std::optional<DeviceChoice> chooseDevice (Console& console, const DeviceSurvey& 
         return std::nullopt;
     }
 
+    const auto recommended = survey.getRecommendedIndex();
+
     console.line();
     for (int i = 0; i < entries.size(); ++i)
-        console.line ("  [" + juce::String (i + 1) + "] " + entries.getReference (i).describe());
+        console.line ("  [" + juce::String (i + 1) + "] " + entries.getReference (i).describe()
+                      + (i == recommended ? "  <- recommended" : ""));
 
-    const auto index = parseIndex (console.ask ("  Device number"), entries.size());
+    const auto index = parseIndex (console.ask ("  Device number",
+                                                recommended >= 0 ? juce::String (recommended + 1) : juce::String()),
+                                   entries.size());
     if (! index)
     {
         console.line ("  Not a valid device number.");
@@ -146,6 +151,21 @@ std::optional<DeviceChoice> chooseDevice (Console& console, const DeviceSurvey& 
     }
 
     const auto& picked = entries.getReference (*index);
+
+    if (! picked.isUsable())
+    {
+        console.line ("  That driver is installed but has no working device behind it. Choose another.");
+        return std::nullopt;
+    }
+
+    if (picked.isSharedMode())
+    {
+        console.line ("  Note: " + picked.typeName + " goes through the Windows mixer. It uses a fixed buffer (about 10 ms),");
+        console.line ("  ignores buffer-size requests, and may glitch. It's fine for system sound, not for live use.");
+        if (recommended >= 0 && ! entries.getReference (recommended).isSharedMode())
+            console.line ("  For low-latency tests choose [" + juce::String (recommended + 1) + "] "
+                          + entries.getReference (recommended).describe() + " instead.");
+    }
     DeviceChoice choice { picked.typeName, picked.isInput ? picked.name : juce::String(),
                           picked.isOutput ? picked.name : juce::String() };
 

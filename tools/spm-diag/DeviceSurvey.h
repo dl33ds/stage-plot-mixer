@@ -27,6 +27,12 @@ struct DeviceEntry
     int defaultBufferSize = 0;
     juce::String error;
 
+    /** False for drivers that are installed but have no hardware behind them. */
+    bool isUsable() const noexcept { return error.isEmpty() && (inputChannels.size() + outputChannels.size()) > 0; }
+
+    /** True for Windows paths that go through the Windows mixer, with a fixed ~10 ms buffer. */
+    bool isSharedMode() const noexcept { return typeName == "Windows Audio" || typeName == "DirectSound"; }
+
     juce::String describe() const;
 };
 
@@ -48,7 +54,13 @@ public:
     /** Rescans all driver types and probes every device. Slow (loads each ASIO driver). */
     void scan();
 
+    /** Sorted best-first: native low-latency drivers (ASIO, CoreAudio, ALSA), then WASAPI
+        exclusive, then shared-mode paths. Unusable entries come last.
+    */
     const juce::Array<DeviceEntry>& getEntries() const noexcept { return entries; }
+
+    /** Index of the entry a tester should normally pick, or -1 if none is usable. */
+    int getRecommendedIndex() const;
 
     juce::AudioIODeviceType* findType (const juce::String& typeName) const;
 
