@@ -1,4 +1,9 @@
-# Hardware Testing Guide: spm-diag
+# Hardware Testing Guide
+
+The download contains two programs:
+
+- **Stage Plot Mixer.exe**: the mixer itself. For now it is an engine test: meters for every input, and a monitor mix to outputs 1–2 (Test D).
+- **spm-diag.exe**: a small diagnostics program (Tests A–C).
 
 `spm-diag` is a small diagnostics program. It checks that your PC and audio interfaces work before the full mixer is built. It lists every audio driver, device and channel, checks the FireWire card, and runs two tests. Everything it shows is saved to a report file for the developers.
 
@@ -9,7 +14,7 @@ It does **not** change any settings on your computer or interface.
 ## 1. Download
 
 1. Go to <https://github.com/dl33ds/stage-plot-mixer/actions> and click the most recent run with a green tick.
-2. Scroll to **Artifacts** and download **spm-diag-windows-x64**.
+2. Scroll to **Artifacts** and download **stage-plot-mixer-windows-x64**.
 3. Unzip it into a folder (for example `C:\StagePlotMixer\`).
 
 The first time you run it, Windows may show *"Windows protected your PC"*. The program isn't code-signed yet. Click **More info**, then **Run anyway**.
@@ -55,14 +60,34 @@ Then:
 
 Run test A again, but choose a **Windows Audio** device (for example your speakers or built-in microphone). This checks the non-ASIO path.
 
-## 6. FireWire interfaces (later)
+## 6. Test D: Mixer engine, 10 minutes (Stage Plot Mixer.exe)
+
+This checks that the mixer's audio engine runs cleanly on your interface.
+
+1. Close spm-diag and any other audio programs, then double-click **Stage Plot Mixer.exe**.
+2. The status bar at the bottom should show **Focusrite USB ASIO (ASIO)**. If it doesn't, click **Audio settings...**, choose type **ASIO** and device **Focusrite USB ASIO**.
+3. In **Audio settings...**, set the sample rate to **48000** and the buffer size to **128**, then close the settings window.
+4. Turn your headphones or speakers **down**. Outputs start **muted** (the red **Unmute outputs** button). Click it; the sound fades in.
+5. Speak or play into the inputs: the **Inputs** meters move, and you hear the inputs on outputs 1–2. **Monitor level** sets how loud. Tick **Test tone** to hear a 1 kHz tone, then untick it.
+   If you hear yourself twice (slightly delayed), turn the Scarlett's **Direct Monitor** off.
+6. Click **Reset counters**, then leave it running for **10 minutes** (you can keep playing into it). Use the PC normally but don't open other audio programs.
+7. Click **Copy report**, and paste the text into a new issue (or a Notepad file).
+
+**What we're looking for:** `Verdict: PASS`, meaning 0 late, 0 overloads and 0 driver dropouts over the 10 minutes, and no clicks or dropouts heard. Also tell us:
+- whether muting/unmuting and the test tone were click-free,
+- the CPU figures shown in the status bar,
+- anything that looks wrong or is hard to read.
+
+To try the mixer without an interface, choose the **Simulated** device type in Audio settings. It has 32 inputs carrying quiet test tones.
+
+## 7. FireWire interfaces (later)
 
 When the M-Audio FireWire 1814 or ProFire Lightbridge are available:
 1. Install their drivers, connect them, and power them on before starting spm-diag.
 2. Run tests A and B on each one. For the Lightbridge, connect ADAT sources if you can, so all 32 inputs can be checked.
 3. The report's **FireWire (IEEE 1394)** section shows the FireWire card and its chipset. Texas Instruments is the best.
 
-## 7. Sending results
+## 8. Sending results
 
 Reports are saved to **Documents\StagePlotMixer\Diagnostics\** as `spm-diag-<date>-<time>.txt`. The exact path is shown at the end of each run.
 

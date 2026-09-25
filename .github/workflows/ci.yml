@@ -20,13 +20,13 @@ jobs:
         include:
           - name: Windows (MSVC)
             os: windows-latest
-            artifact: spm-diag-windows-x64
+            artifact: stage-plot-mixer-windows-x64
           - name: macOS (Clang)
             os: macos-latest
-            artifact: spm-diag-macos
+            artifact: stage-plot-mixer-macos
           - name: Linux (GCC)
             os: ubuntu-latest
-            artifact: spm-diag-linux-x64
+            artifact: stage-plot-mixer-linux-x64
 
     steps:
       - uses: actions/checkout@v5
@@ -35,7 +35,8 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build libasound2-dev libjack-jackd2-dev libfreetype-dev libfontconfig1-dev
+          sudo apt-get install -y ninja-build libasound2-dev libjack-jackd2-dev libfreetype-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev libgl1-mesa-dev
 
       - name: Configure
         shell: bash
@@ -66,6 +67,14 @@ jobs:
           mkdir -p dist
           exe=$(find build -type f \( -name 'spm-diag' -o -name 'spm-diag.exe' \) -path '*Release*' | head -1)
           cp "$exe" dist/
+          app=build/src/app/StagePlotMixer_artefacts/Release
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            cp -R "$app/Stage Plot Mixer.app" dist/
+          elif [ "$RUNNER_OS" = "Windows" ]; then
+            cp "$app/Stage Plot Mixer.exe" dist/
+          else
+            cp "$app/Stage Plot Mixer" dist/
+          fi
           cp docs/TESTING.md dist/README-TESTING.md
           cp LICENSE dist/
 

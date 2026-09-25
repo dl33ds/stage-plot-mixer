@@ -16,3 +16,17 @@ else()
 endif()
 target_include_directories(spm_platform PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(spm_platform PUBLIC cxx_std_20)
+
+# spm_audio: the framework-independent real-time engine, node types and graph builder.
+add_library(spm_audio STATIC
+    engine/CompiledGraph.cpp
+    engine/EngineCore.cpp
+    engine/GraphHandoff.cpp
+    nodes/BuiltInNodes.cpp
+    graph/GraphBuilder.cpp
+    graph/GraphRules.cpp
+)
+target_include_directories(spm_audio PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_features(spm_audio PUBLIC cxx_std_20)
+target_link_libraries(spm_audio PUBLIC spm_core)
+add_subdirectory(app)

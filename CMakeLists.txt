@@ -34,10 +34,14 @@ endif()
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(Dependencies)
 
-add_subdirectory(src)
-add_subdirectory(tools/spm-diag)
-
 if(SPM_BUILD_TESTS)
     enable_testing()
+endif()
+
+add_subdirectory(src)
+add_subdirectory(tools/spm-diag)
+add_subdirectory(tools/spm-soak)
+
+if(SPM_BUILD_TESTS)
     add_subdirectory(tests)
 endif()

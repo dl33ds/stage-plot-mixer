@@ -2,7 +2,7 @@
 
 *A multi-channel real-time audio mixer & recorder*
 
-**Status:** v0.4 (requirements confirmed; Phase 0 in progress)
+**Status:** v0.5 (requirements confirmed; Phase 1 in progress)
 **Target platforms:** Windows 10 / 11 (x64) first; macOS and Linux later
 **License:** GNU AGPLv3 (see [§3.5](#35-licensing-open-source))
 **Repository:** <https://github.com/dl33ds/stage-plot-mixer>
@@ -422,9 +422,9 @@ Each phase ends with a working, demonstrable build.
 | Phase | Name | Deliverables | Exit criteria |
 |---|---|---|---|
 | **0** | Foundations & hardware check | Repo, CMake, CI (Win/Mac/Linux), licence confirmation; **`spm-diag` tool**: enumerate ASIO/WASAPI devices, channel names, rates, buffers; stability test; loopback latency test; FireWire card/driver report | Scarlett Solo (ASIO) and system audio (WASAPI) pass stability and latency tests at 48 kHz |
-| **0b** | FireWire validation *(when hardware arrives; runs alongside later phases)* | `spm-diag` runs on the FireWire 1814 and ProFire Lightbridge | Both enumerate and pass at 48 kHz; Lightbridge shows 32+ inputs. **Required before the first release** |
-| **1** | Engine core | Device manager (ASIO/WASAPI), compiled-graph runtime with a fixed test graph, parameter smoothing, CPU/xrun monitor, basic meters, safe start | 1-hour 32-ch pass-through with no xruns at 128 samples |
-| **2** | Graph editor v1 | Design system (Inter, theme, icons), node canvas (pan/zoom/minimap), ports/bundles, wires, create/delete/connect, validation, undo/redo, save/load, atomic graph swap, built-in mixing/routing nodes | A 32-ch live mix can be wired and changed during playback without clicks |
+| **0b** | FireWire validation *(when hardware arrives; runs alongside later phases)* | `spm-diag` runs on the FireWire 1814 and ProFire Lightbridge | Both enumerate and pass at 48 kHz; Lightbridge shows 32+ inputs; **1-hour 32-ch pass-through with no xruns at 128 samples** (moved here from Phase 1). **Required before the first release** |
+| **1** | Engine core | Device manager (ASIO/WASAPI), compiled-graph runtime with a fixed test graph, parameter smoothing, CPU/xrun monitor, basic meters, safe start | 1-hour 32-ch pass-through on the **simulated device** with bit-exact output while the graph is edited; **10-minute run on the Scarlett (ASIO, 128 samples)** with no xruns. The 1-hour 32-ch hardware run is in Phase 0b |
+| **2** | Graph editor v1 | Design system (Inter, theme, icons), node canvas (pan/zoom/minimap), ports/bundles, wires, create/delete/connect, validation, undo/redo, save/load, atomic graph swap, built-in mixing/routing nodes | A 32-ch live mix (simulated device; Scarlett for audible checks) can be wired and changed during playback without clicks |
 | **3** | Recording | Recorder node, ring buffers, disk writer, BWF/RF64, mono files, take management, markers, pre-roll, disk-time display, crash recovery | 8-h soak test, 32 ch raw + processed, bit-exact raw files |
 | **4** | Hierarchy & faces | Group nodes, breadcrumb navigation, templates, channel-strip template, faces, tear-off windows, panels, face groups, layouts, Show Lock | A full "Show" layout survives save/restore and monitor changes |
 | **5** | Metering suite | All styles/scales/ballistics, peak-hold/clip, meter presets, LUFS/true-peak | All meter types configurable; 64 meters at 60 fps within budget |
@@ -474,6 +474,7 @@ Phases 5 and 7 are largely independent of 3–4 and can move earlier if needed.
 ---
 
 ## 12. Change History
+- **v0.5**: Phase 0b (FireWire) deferred until the hardware arrives; it still runs alongside later phases and is required before release. Phase 1's 1-hour 32-channel hardware test moves to Phase 0b; Phase 1 instead uses a simulated 32-channel device plus a 10-minute Scarlett run.
 - **v0.4**: Confirmed the multiple-capture-points interpretation (R12). From the first Scarlett test run: Windows shared-mode audio (fixed 10 ms buffer, dropouts) is confirmed unsuitable for live paths, and spm-diag now ranks and recommends ASIO. Scarlett Solo on Focusrite USB ASIO ran cleanly at 192, 128 and 64 samples (reported round trip 920 / 696 / 376 samples). USB 1 ms frame jitter is now tolerated by the late-callback check.
 - **v0.3**: Named *Stage Plot Mixer*; public repo; AGPLv3 accepted; JUCE 9.0.2 (bundles ASIO headers); VST3 + LADSPA only; multiple capture points; no console view; test hardware is the Scarlett Solo for now, with FireWire validation later (Phase 0b).
 - **v0.2**: Incorporated requirements: live sound + home studio; target hardware list; 32 ch @ 48 kHz; record only; app audio input; open source; VST/LADSPA; node-based hierarchical UI; font choice.
