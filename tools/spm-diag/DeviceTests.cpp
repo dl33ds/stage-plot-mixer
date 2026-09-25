@@ -343,7 +343,7 @@ TestResult runStabilityTest (Console& console, juce::AudioIODeviceType& type,
                   + juce::String (s.meanIntervalMs, 2) + " / max " + juce::String (s.maxIntervalMs, 2)
                   + " ms (buffer period " + juce::String (s.expectedPeriodMs, 2) + " ms)");
     console.line ("    Late callbacks:     " + juce::String (s.lateCallbacks) + " (gap > "
-                  + juce::String (CallbackStats::lateThreshold, 1) + "x buffer period)");
+                  + juce::String (CallbackStats::lateLimitSeconds (s.expectedPeriodMs / 1000.0) * 1000.0, 2) + " ms)");
     console.line ("    Driver xruns:       " + (xruns >= 0 ? juce::String (xruns) : juce::String ("not reported by this driver")));
 
     console.line ("    Input peaks:");

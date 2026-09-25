@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -25,7 +26,7 @@ public:
     {
         std::int64_t callbacks = 0;
         std::int64_t samples = 0;
-        std::int64_t lateCallbacks = 0;     // gap between callbacks > lateThreshold x expected period
+        std::int64_t lateCallbacks = 0;     // gap between callbacks > lateLimitSeconds (period)
         double expectedPeriodMs = 0.0;
         double minIntervalMs = 0.0;
         double maxIntervalMs = 0.0;
@@ -53,7 +54,17 @@ public:
     /** Number of callbacks in which this channel reached full scale. */
     std::int64_t getClipCount (int channel) const noexcept;
 
+    /** A callback is late when its gap exceeds the period plus the larger of half a period
+        or usbJitterSeconds. USB drivers deliver audio in 1 ms bus frames, so at small buffers
+        the gaps alternate (e.g. 1, 1, 2 ms for 64 samples at 48 kHz) without losing audio.
+    */
     static constexpr double lateThreshold = 1.5;
+    static constexpr double usbJitterSeconds = 0.001;
+
+    static double lateLimitSeconds (double periodSeconds) noexcept
+    {
+        return periodSeconds + std::max (periodSeconds * (lateThreshold - 1.0), usbJitterSeconds);
+    }
     static constexpr float clipLevel = 0.999f;
 
 private:

@@ -125,3 +125,23 @@ TEST_CASE ("reset clears everything", "[stats]")
     REQUIRE (s.lateCallbacks == 0);
     REQUIRE (stats.getInputPeakHold (0) == 0.0f);
 }
+
+TEST_CASE ("USB frame jitter at small buffers is not counted as late", "[stats]")
+{
+    // 64 samples at 48 kHz is 1.33 ms, but a USB driver delivers on 1 ms frames: 1, 1, 2 ms...
+    CallbackStats stats;
+    stats.reset (48000.0, 64, 1);
+
+    Block block (1, 64);
+    const double gaps[] = { 0.001, 0.001, 0.002 };
+
+    auto t = 0.0;
+    for (int i = 0; i < 300; ++i)
+        stats.process (t += gaps[i % 3], block.pointers.data(), 1, 64);
+
+    REQUIRE (stats.snapshot().lateCallbacks == 0);
+
+    // ...while a real stall (a missed buffer or worse) still is.
+    stats.process (t += 0.004, block.pointers.data(), 1, 64);
+    REQUIRE (stats.snapshot().lateCallbacks == 1);
+}

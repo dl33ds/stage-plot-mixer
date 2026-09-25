@@ -75,7 +75,7 @@ void CallbackStats::process (double now, const float* const* inputs, int numInpu
             maxInterval.store (std::max (maxInterval.load (std::memory_order_relaxed), interval), std::memory_order_relaxed);
         }
 
-        if (interval > expectedPeriod * lateThreshold)
+        if (interval > lateLimitSeconds (expectedPeriod))
             late.fetch_add (1, std::memory_order_relaxed);
 
         spanSeconds.store (now - firstCallbackTime, std::memory_order_relaxed);
