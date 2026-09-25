@@ -256,6 +256,21 @@ The graph handles **wiring**. The **Panels** handle **operating** the mix.
 - **UI scaling:** per-monitor DPI 100–300%, vector-drawn throughout.
 - **Keyboard:** all common actions have shortcuts; a searchable command palette (Ctrl+K).
 
+#### As built (Phase 4)
+- **Groups:** every node has a parent (0 is the top level). A group's ports are the **Group Input** and **Group Output** pins inside it, in the order they were added. Wires only join nodes in the same group. **Ctrl+G** groups the selection and adds pins for every wire that crosses the edge, so the sound doesn't change. **Ctrl+Shift+G** ungroups and wires straight through the pins. Double-click a group (or select it and press Enter) to go inside. The breadcrumbs, or Esc with nothing selected, take you back out. The engine flattens groups away: pins become pass-through nodes, so a group costs nothing.
+- **Templates:** right-click a group → *Save as template* writes a `.spmtemplate` file (JSON) to Documents/StagePlotMixer/Templates. Templates appear under *Templates* in quick-add. The built-in **Channel Strip** is In (mono) → Trim → Fader → Pan → Out (stereo). EQ and dynamics join it when those nodes exist (Phase 6).
+- **Faces and panels:** a face is a node's controls as a console strip. Knobs are for levels and continuous values, buttons for toggles, and menus for choices. A fader or bus level becomes a big fader with a meter. A group's face shows the controls of everything inside it, from left to right. Names that would clash get the node's name in front, e.g. *Trim Mute*.
+  - Faces live on **panels**: tabs next to *Graph*. Add a face by right-clicking a node (*Add face to panel*) or by right-clicking a panel.
+  - Faces come in compact, standard and large. They snap to a 4 px grid.
+  - **Face groups** are named boxes that faces are dragged into. They collapse to a header.
+- **Tear-off:** right-click a panel's tab (or the panel) → *Open in its own window*. Closing the window puts the panel back in the tabs.
+- **View and layouts:** saving records the current tab, the main window, and each panel window (bounds, the display it's on, and whether it's maximised). Opening the session puts them back. **Layouts** stores named copies of this and recalls them. Windows are placed with `placeWindow`:
+  - If the saved display is still there, a window goes back exactly where it was.
+  - If not, it goes to the display it overlaps most (or the primary), at the same offset from the corner, shrunk to fit.
+  - The app also checks the displays four times a second, so unplugging a monitor mid-show brings its windows back onto a remaining screen.
+- **Show Lock** (toolbar, or Ctrl+Shift+L): nodes and faces can't be added, moved, wired, renamed or removed. Faders, knobs and buttons still work. It is saved with the session.
+- Not yet: dragging a face straight out of a node, free face resizing, moving several faces at once, control links, and tearing off a single face group (tear off a panel holding it instead).
+
 ### 5.3 Metering (R2)
 
 Metering is split into **measurement** (on the audio thread) and **display** (on the UI thread), so any display style can show any measurement.
@@ -465,6 +480,7 @@ Phase 5 is largely independent of 3–4 and can move earlier if needed.
 ---
 
 ## 12. Change History
+- **v0.8**: Phase 4 (Hierarchy & faces) built; see *As built* in §5.2. Session files are now version 2 (older files still open). The Channel Strip template is Trim → Fader → Pan until the EQ and dynamics nodes exist.
 - **v0.7**: Phase 3 (Recording) built; see *As built* in §5.4. Pre-roll choices are off/10/30/60 s rather than 30–120 s, to keep memory use modest on 32 channels.
 - **v0.6**: App Audio capture (the old Phase 7) removed from the plan and moved to the backlog (§14.1). Later phases renumbered: Polish & release is now Phase 7, Cross-platform is Phase 8.
 - **v0.5**: Phase 0b (FireWire) deferred until the hardware arrives; it still runs alongside later phases and is required before release. Phase 1's 1-hour 32-channel hardware test moves to Phase 0b; Phase 1 instead uses a simulated 32-channel device plus a 10-minute Scarlett run.

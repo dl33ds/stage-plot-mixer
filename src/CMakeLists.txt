@@ -71,7 +71,7 @@ set_target_properties(spm_juce PROPERTIES
     CXX_VISIBILITY_PRESET hidden)
 
 # spm_model: the session document (ValueTree + undo, JSON files).
-add_library(spm_model STATIC model/Session.cpp model/Templates.cpp)
+add_library(spm_model STATIC model/Session.cpp model/Templates.cpp model/WindowPlacement.cpp)
 target_include_directories(spm_model PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(spm_model PUBLIC spm_audio spm_juce)
 

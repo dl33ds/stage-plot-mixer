@@ -57,13 +57,15 @@ public:
 
         window = std::make_unique<MainWindow> (getApplicationName(), *engine, *properties.getUserSettings());
 
-        // For development: render the window to a PNG and quit ("--snapshot path.png [--add-recorder after] [--select name] [--record]").
+        // For development: render the window to a PNG and quit ("--snapshot path.png [--add-recorder after] [--select name] [--record] [--panel]").
         if (const auto args = juce::StringArray::fromTokens (commandLine, true); args.contains ("--snapshot"))
         {
             const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (args[args.indexOf ("--snapshot") + 1].unquoted());
             auto* main = window->getMainComponent();
             if (main != nullptr && args.contains ("--add-recorder"))
                 main->addRecorderAfter (args[args.indexOf ("--add-recorder") + 1].unquoted());
+            if (main != nullptr && args.contains ("--panel"))
+                main->addDemoPanel();
             if (main != nullptr && args.contains ("--select"))
                 main->selectNodeNamed (args[args.indexOf ("--select") + 1].unquoted());
             if (main != nullptr && args.contains ("--record"))

@@ -66,6 +66,15 @@ const PortLevels* MeterCache::get (graph::NodeId node, bool input, int port) con
     return it != levels.end() ? &it->second : nullptr;
 }
 
+void MeterCache::alias (graph::NodeId node, bool input, int port, graph::NodeId fromNode, bool fromInput, int fromPort)
+{
+    if (const auto* from = get (fromNode, fromInput, fromPort))
+    {
+        auto copy = *from;
+        levels[std::make_tuple (node, input, port)] = std::move (copy);
+    }
+}
+
 void MeterCache::clearClips (graph::GraphBuilder& builder, graph::NodeId node)
 {
     if (auto* processor = builder.getProcessor (node))

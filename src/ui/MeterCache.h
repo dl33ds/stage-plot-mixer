@@ -32,6 +32,9 @@ public:
 
     const PortLevels* get (graph::NodeId node, bool input, int port) const;
 
+    /** Makes a port show another port's levels (a group's ports show their pins'). */
+    void alias (graph::NodeId node, bool input, int port, graph::NodeId fromNode, bool fromInput, int fromPort);
+
     /** Clears the clip indicators of a node's meters. */
     void clearClips (graph::GraphBuilder& builder, graph::NodeId node);
 

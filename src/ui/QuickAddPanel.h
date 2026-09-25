@@ -16,7 +16,17 @@ class QuickAddPanel final : public juce::Component, private juce::KeyListener
 public:
     using Filter = std::function<bool (const nodes::NodeType&)>;
 
-    QuickAddPanel (juce::String title, Filter filter, std::function<void (const std::string& typeId)> onChosen,
+    /** Something that can be added: a node type, or a template. */
+    struct Entry
+    {
+        std::string id;  // a node type id, or anything the caller recognises
+        juce::String name, category, icon, description;
+    };
+
+    /** The built-in node types that pass the filter. */
+    static std::vector<Entry> nodeEntries (const Filter& filter);
+
+    QuickAddPanel (juce::String title, std::vector<Entry> entries, std::function<void (const std::string& id)> onChosen,
                    std::function<void()> onDismissed);
     ~QuickAddPanel() override;
 
@@ -37,7 +47,7 @@ private:
 
     struct Row
     {
-        const nodes::NodeType* type = nullptr;  // nullptr: a category heading
+        const Entry* type = nullptr;  // nullptr: a category heading
         juce::String heading;
     };
 
@@ -51,7 +61,7 @@ private:
     juce::Rectangle<int> listArea() const;
 
     juce::String title;
-    Filter filter;
+    std::vector<Entry> entries;
     std::function<void (const std::string&)> onChosen;
     std::function<void()> onDismissed;
     juce::TextEditor search;

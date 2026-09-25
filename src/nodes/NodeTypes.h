@@ -34,6 +34,7 @@ struct ParamSpec
     bool minusInfinityAtMinimum = false;
     std::vector<std::string> choices;  // for ParamKind::choice
     std::string tooltip;
+    bool onFace = true;                // shown on the node's face (if not structural)
 };
 
 struct PortInfo
@@ -56,7 +57,7 @@ struct NodeType
 {
     std::string id;           // stable, stored in session files
     std::string name;         // shown to the user
-    std::string category;     // Sources, Destinations, Mixing, Routing, Analysis
+    std::string category;     // Sources, Destinations, Mixing, Routing, Analysis, Groups
     std::string icon;         // Lucide icon name
     std::string description;
     std::vector<ParamSpec> params;
@@ -103,6 +104,15 @@ namespace types
     inline constexpr std::string_view unbundle       = "route.unbundle";
     inline constexpr std::string_view meter          = "an.meter";
     inline constexpr std::string_view recorder       = "rec.recorder";
+    inline constexpr std::string_view group          = "grp.group";
+    inline constexpr std::string_view groupInput     = "grp.in";
+    inline constexpr std::string_view groupOutput    = "grp.out";
+}
+
+/** True for the pins that give a group its inputs and outputs. */
+inline bool isGroupPin (std::string_view typeId) noexcept
+{
+    return typeId == types::groupInput || typeId == types::groupOutput;
 }
 
 inline constexpr int maxPortChannels = 64;

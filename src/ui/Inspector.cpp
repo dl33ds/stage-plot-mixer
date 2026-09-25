@@ -480,8 +480,11 @@ void Inspector::buildEmpty()
                  "Right or middle drag, or Space + drag: pan\n"
                  "Wheel: zoom    F: fit everything\n"
                  "Delete: remove    Ctrl+D: duplicate\n"
-                 "Double-click a node's title: rename"),
-             150, false);
+                 "Double-click a node's title: rename\n"
+                 "Ctrl+G: group    Ctrl+Shift+G: ungroup\n"
+                 "Double-click a group: open it    Esc: back out\n"
+                 "Right-click a node: add its face to a panel"),
+             204, false);
 }
 
 void Inspector::layoutContent()

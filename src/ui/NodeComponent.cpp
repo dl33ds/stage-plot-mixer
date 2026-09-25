@@ -14,7 +14,7 @@ namespace
 
 constexpr int margin = 8;           // room outside the body for the port dots
 constexpr float portRadius = 5.0f;
-constexpr int sliderHeight = 24, toggleRowHeight = 26;
+constexpr int sliderHeight = 24, toggleRowHeight = 26, groupInfoHeight = 24;
 
 juce::String describeChannels (int channels)
 {
@@ -336,6 +336,8 @@ void NodeComponent::rebuildControls()
         height += c.height;
     if (toggleRow != nullptr)
         height += toggleRowHeight;
+    if (type->id == nodes::types::group)
+        height += groupInfoHeight;
     height += meterHeight() + 10;
 
     setSize (width + 2 * margin, height);
@@ -646,6 +648,25 @@ void NodeComponent::paint (juce::Graphics& g)
         }
     }
 
+    // A group: what's inside, and how to get there.
+    if (type != nullptr && type->id == nodes::types::group)
+    {
+        auto count = 0;
+        for (auto child : canvas.getSession().getChildren (id))
+            if (! nodes::isGroupPin (canvas.getSession().findNode (child)[model::ids::type].toString().toStdString()))
+                ++count;
+
+        auto info = juce::Rectangle<float> (body.getX() + 10.0f, (float) (meterArea().getY() - groupInfoHeight - 2),
+                                                  body.getWidth() - 20.0f, (float) groupInfoHeight - 4.0f);
+        g.setColour (theme::surfaceHigh.withAlpha (0.6f));
+        g.fillRoundedRectangle (info, 4.0f);
+        drawIcon (g, "box", info.removeFromLeft (24.0f).withSizeKeepingCentre (12.0f, 12.0f), colour);
+        g.setColour (theme::textMuted);
+        g.setFont (theme::font (11.0f));
+        g.drawText (juce::String (count) + (count == 1 ? " node inside" : " nodes inside") + juce::String::fromUTF8 (" \xc2\xb7 double-click to open"),
+                    info, juce::Justification::centredLeft, true);
+    }
+
     paintMeter (g, meterArea().toFloat());
 }
 
@@ -680,6 +701,8 @@ void NodeComponent::mouseDoubleClick (const juce::MouseEvent& e)
 {
     if (e.position.y < (float) headerHeight)
         startRename();
+    else if (canvas.getSession().isGroup (id))
+        canvas.setScope (id);
 }
 
 void NodeComponent::mouseMove (const juce::MouseEvent& e)
@@ -717,12 +740,15 @@ juce::String NodeComponent::getTooltip()
     if (type != nullptr && lastMouse.y < (float) headerHeight)
         return juce::String (type->name) + ": " + type->description + " Double-click to rename.";
 
+    if (type != nullptr && type->id == nodes::types::group)
+        return "Double-click to open this group and see what's inside.";
+
     return {};
 }
 
 void NodeComponent::startRename()
 {
-    if (renameEditor != nullptr)
+    if (renameEditor != nullptr || canvas.isLocked())
         return;
 
     renameEditor = std::make_unique<juce::TextEditor>();

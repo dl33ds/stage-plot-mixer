@@ -130,6 +130,34 @@ This checks that takes are recorded cleanly, completely and in sync.
 
 **What we're looking for:** files that are complete, in sync, and free of clicks, with no dropouts, and pre-roll and markers that work. Please send `take.json` from the 15-minute take along with the **Copy report** text.
 
+## 6c. Test F: Groups, panels and layouts, about 20 minutes (Stage Plot Mixer.exe)
+
+This checks that a "show" setup, with groups, panels and windows on two screens, comes back exactly as it was. A second monitor helps but isn't required.
+
+**Groups**
+
+1. Start with **New**. Drag a box around **Fader 1** and **Pan 1**, then press **Ctrl+G**. They become one **Group** node, wired in the same place. The sound should not change.
+2. Double-click the group. You're now inside it: **Group Input** → Fader → Pan → **Group Output**, with breadcrumbs at the top left. Press **Esc** (with nothing selected) to come back out.
+3. Select the group and press **Ctrl+Shift+G**. The two nodes come back, still wired. Press **Ctrl+Z** to undo.
+4. Right-click the group → **Save as template**, and name it `My strip`. Press **Tab** and type `strip`. Both **Channel Strip** and **My strip** should be listed. Add a **Channel Strip** and wire **Input 1** into it and its output into **Master Bus**.
+
+**Panels**
+
+5. Right-click **Input 1** → **Add face to panel** → **New panel**. A **Panel 1** tab appears. Add the Channel Strip, Master Fader and Main Out the same way (choose *Panel 1*).
+6. Click the **Panel 1** tab. Move a fader: the node in the graph should move too, and the meters should move with your signal.
+7. Right-click empty space in the panel → **Add face group**. Drag a face by its name into the group. Right-click a face → **Size** → **Large**.
+8. Double-click the tab and rename it `Show`.
+
+**Windows and layouts**
+
+9. Right-click the **Show** tab → **Open in its own window**. Put that window on the second monitor (or anywhere) and resize it.
+10. Click **Layouts** → **Store current layout as...** and name it `Show`. Move the window somewhere else, then choose **Layouts** → **Show**. It should jump back.
+11. Click **Show Lock**. Try to drag a node, delete something, or move a face: none of these should work. Faders and mutes should still work. Turn Show Lock off again.
+12. **Save**, quit and start the app again. The panel window should come back on the same monitor, at the same size.
+13. Quit, **unplug the second monitor** (or change the display arrangement in Windows settings), and start again. The panel window should appear on the remaining screen with its title bar visible. Plug the monitor back in while the app is running: nothing should end up off-screen.
+
+**What we're looking for:** anything that ends up off-screen, forgets where it was, changes the sound when grouping, or can be changed while Show Lock is on. Please send screenshots of anything odd along with the **Copy report** text.
+
 ## 7. FireWire interfaces (later)
 
 When the M-Audio FireWire 1814 or ProFire Lightbridge are available:

@@ -4,6 +4,7 @@
 #pragma once
 
 #include "model/Session.h"
+#include "model/Templates.h"
 #include "ui/Icons.h"
 #include "ui/MeterCache.h"
 #include "ui/Selection.h"
@@ -37,6 +38,8 @@ enum class PortState { normal, dimmed, available, hovered, refused };
     - Drag from a wired input to move or remove its wire.
     - Middle/right drag or Space+drag pans; the wheel zooms (trackpads pan, pinch zooms).
     - Drag on empty space to select several nodes.
+    - Shows one level of groups at a time: double-click a group to go inside, and the
+      breadcrumbs (or Escape with nothing selected) to come back out.
 */
 class GraphCanvas final : public juce::Component,
                           private juce::ValueTree::Listener,
@@ -60,10 +63,22 @@ public:
     juce::Point<float> worldToView (juce::Point<float> p) const noexcept { return (p - offset) * zoom; }
     juce::Rectangle<float> getVisibleWorldArea() const;
 
+    // Groups -------------------------------------------------------------------------------
+    /** The group being shown (0: the top level). */
+    graph::NodeId getScope() const noexcept { return scope; }
+    void setScope (graph::NodeId group);
+    void goUp() { setScope (session.getParent (scope)); }
+
     // Editing ------------------------------------------------------------------------------
     void deleteSelection();
     void duplicateSelection();
     void selectAll();
+    void groupSelection();
+    void ungroupSelection();
+    void saveAsTemplate (graph::NodeId node);
+
+    /** Show Lock: nothing can be moved, wired, added or removed; controls still work. */
+    bool isLocked() const { return session.isShowLocked(); }
 
     /** Opens the add-node search at a point in the view (or under the mouse). */
     void showQuickAdd (std::optional<juce::Point<float>> viewPoint = {});
@@ -100,6 +115,7 @@ public:
 private:
     class Overlay;
     class Minimap;
+    class Breadcrumbs;
 
     // Sync with the session.
     void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier&) override { triggerAsyncUpdate(); }
@@ -146,6 +162,7 @@ private:
     void showQuickAddFor (juce::Point<float> viewPoint, std::optional<PortRef> connectTo);
     void closeQuickAdd();
     void addNodeFromQuickAdd (const std::string& typeId, juce::Point<float> worldPoint, std::optional<PortRef> connectTo);
+    void addFaceMenu (juce::PopupMenu& menu, graph::NodeId node);
 
     void showCanvasMenu (juce::Point<float> viewPoint);
 
@@ -155,6 +172,9 @@ private:
     MeterCache meters;
 
     std::vector<std::unique_ptr<NodeComponent>> nodeComponents;
+    graph::NodeId scope = 0;
+    std::map<graph::NodeId, std::pair<juce::Point<float>, float>> savedViews;  // offset and zoom per group
+    std::vector<model::Template> quickAddTemplates;
 
     juce::Point<float> offset { -80.0f, -80.0f };  // world point at the view's top-left
     float zoom = 1.0f;
@@ -175,6 +195,7 @@ private:
 
     std::unique_ptr<Overlay> overlay;
     std::unique_ptr<Minimap> minimap;
+    std::unique_ptr<Breadcrumbs> breadcrumbs;
     std::unique_ptr<QuickAddPanel> quickAdd;
     IconButton zoomInButton { "zoom-in", "Zoom in (Ctrl +)" }, zoomOutButton { "zoom-out", "Zoom out (Ctrl -)" },
         fitButton { "maximize", "Fit everything in view (F)" }, mapButton { "map", "Show or hide the overview map" };

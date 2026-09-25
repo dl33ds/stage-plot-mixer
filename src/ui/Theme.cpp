@@ -62,6 +62,7 @@ juce::Colour categoryColour (const juce::String& category)
     if (category == "Mixing")       return juce::Colour (0xff4c9aff);
     if (category == "Routing")      return juce::Colour (0xfff5b942);
     if (category == "Analysis")     return juce::Colour (0xff5bd0ef);
+    if (category == "Groups" || category == "Templates") return juce::Colour (0xffe07bb5);
     return textMuted;
 }
 

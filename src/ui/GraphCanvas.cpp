@@ -5,7 +5,9 @@
 
 #include "engine/Smoother.h"
 
+#include "ui/Dialogs.h"
 #include "ui/NodeComponent.h"
+#include "ui/PanelView.h"
 #include "ui/QuickAddPanel.h"
 #include "ui/Theme.h"
 
@@ -68,7 +70,9 @@ public:
         {
             g.setColour (theme::textMuted);
             g.setFont (theme::font (14.0f));
-            g.drawText ("Press Tab or double-click to add a node", getLocalBounds(), juce::Justification::centred, false);
+            g.drawText (canvas.scope != 0 ? "An empty group: press Tab to add a Group Input, nodes and a Group Output"
+                                          : "Press Tab or double-click to add a node",
+                        getLocalBounds(), juce::Justification::centred, false);
         }
     }
 
@@ -180,6 +184,86 @@ private:
 };
 
 //==============================================================================
+/** Where you are: "Session › Group › Inner", each part clickable, with a button to go up. */
+class GraphCanvas::Breadcrumbs final : public juce::Component
+{
+public:
+    explicit Breadcrumbs (GraphCanvas& c) : canvas (c)
+    {
+        addAndMakeVisible (up);
+        up.onClick = [this] { canvas.goUp(); };
+    }
+
+    void update()
+    {
+        parts.clear();
+        parts.push_back ({ 0, "Session", {} });
+        for (auto group : canvas.session.getPath (canvas.scope))
+            parts.push_back ({ group, canvas.session.getNodeName (group), {} });
+
+        auto x = 36;
+        for (auto& part : parts)
+        {
+            const auto w = (int) juce::GlyphArrangement::getStringWidth (theme::font (12.5f, theme::Weight::medium), part.name) + 8;
+            part.area = { x, 0, w, height };
+            x += w + 18;
+        }
+
+        setSize (x - 10, height);
+        repaint();
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        g.setColour (theme::surface.withAlpha (0.94f));
+        g.fillRoundedRectangle (getLocalBounds().toFloat(), theme::radius);
+        g.setColour (theme::border);
+        g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (0.5f), theme::radius, 1.0f);
+
+        for (size_t i = 0; i < parts.size(); ++i)
+        {
+            const auto last = i + 1 == parts.size();
+            const auto& part = parts[i];
+            g.setColour (last ? theme::text : (part.area.contains (hover) ? theme::accent : theme::textMuted));
+            g.setFont (theme::font (12.5f, last ? theme::Weight::semiBold : theme::Weight::medium));
+            g.drawText (part.name, part.area, juce::Justification::centred, true);
+
+            if (! last)
+                drawIcon (g, "chevron-right", juce::Rectangle<float> ((float) part.area.getRight() + 2.0f, 9.0f, 14.0f, 14.0f), theme::textMuted);
+        }
+    }
+
+    void resized() override { up.setBounds (3, 3, height - 6, height - 6); }
+    void mouseMove (const juce::MouseEvent& e) override { hover = e.getPosition(); repaint(); }
+    void mouseExit (const juce::MouseEvent&) override { hover = { -1, -1 }; repaint(); }
+
+    void mouseUp (const juce::MouseEvent& e) override
+    {
+        for (auto& part : parts)
+            if (part.area.contains (e.getPosition()))
+            {
+                canvas.setScope (part.group);
+                return;
+            }
+    }
+
+    static constexpr int height = 32;
+
+private:
+    struct Part
+    {
+        graph::NodeId group;
+        juce::String name;
+        juce::Rectangle<int> area;
+    };
+
+    GraphCanvas& canvas;
+    std::vector<Part> parts;
+    juce::Point<int> hover { -1, -1 };
+    IconButton up { "arrow-up", "Up to the level above (Escape)" };
+};
+
+//==============================================================================
 GraphCanvas::GraphCanvas (model::Session& s, Selection& sel, graph::GraphBuilder& b)
     : session (s), selection (sel), builder (b)
 {
@@ -190,6 +274,8 @@ GraphCanvas::GraphCanvas (model::Session& s, Selection& sel, graph::GraphBuilder
     addAndMakeVisible (*overlay);
     minimap = std::make_unique<Minimap> (*this);
     addAndMakeVisible (*minimap);
+    breadcrumbs = std::make_unique<Breadcrumbs> (*this);
+    addChildComponent (*breadcrumbs);
 
     for (auto* button : { &zoomInButton, &zoomOutButton, &fitButton, &mapButton })
         addAndMakeVisible (button);
@@ -217,7 +303,16 @@ GraphCanvas::~GraphCanvas()
 //==============================================================================
 void GraphCanvas::sync()
 {
-    const auto ids = session.getNodeIds();
+    // The group being shown was removed (or its creation undone): back to the top.
+    if (scope != 0 && ! session.isGroup (scope))
+    {
+        scope = 0;
+        const auto saved = savedViews.find (0);
+        if (saved != savedViews.end())
+            std::tie (offset, zoom) = saved->second;
+    }
+
+    const auto ids = session.getChildren (scope);
 
     std::erase_if (nodeComponents, [&ids] (auto& n) { return ! ids.contains (n->getId()); });
 
@@ -234,20 +329,57 @@ void GraphCanvas::sync()
         nodeComponents.push_back (std::move (node));
     }
 
-    selection.prune ([this] (auto id) { return session.findNode (id).isValid(); },
+    selection.prune ([this] (auto id) { return session.findNode (id).isValid() && session.getParent (id) == scope; },
                      [this] (auto id) { return session.findWire (id).isValid(); });
 
     if (hoveredWire != 0 && ! session.findWire (hoveredWire).isValid())
         hoveredWire = 0;
 
+    breadcrumbs->setVisible (scope != 0);
+    breadcrumbs->update();
+
     updateTransforms();
     keepOverlaysOnTop();
+}
+
+void GraphCanvas::setScope (graph::NodeId group)
+{
+    if (group != 0 && ! session.isGroup (group))
+        return;
+
+    if (group == scope)
+        return;
+
+    closeQuickAdd();
+    savedViews[scope] = { offset, zoom };
+    const auto previous = scope;
+    scope = group;
+    selection.clear();
+    nodeComponents.clear();
+    sync();
+
+    if (const auto saved = savedViews.find (scope); saved != savedViews.end())
+    {
+        std::tie (offset, zoom) = saved->second;
+        updateTransforms();
+    }
+    else
+    {
+        fitAll();
+    }
+
+    // Coming out of a group: select it, so it's clear where you were.
+    if (previous != 0 && session.getParent (previous) == scope)
+        selection.selectOnly (previous);
+
+    grabKeyboardFocus();
 }
 
 void GraphCanvas::keepOverlaysOnTop()
 {
     overlay->toFront (false);
     minimap->toFront (false);
+    breadcrumbs->toFront (false);
     for (auto* button : { &zoomInButton, &zoomOutButton, &fitButton, &mapButton })
         button->toFront (false);
     if (quickAdd != nullptr)
@@ -291,7 +423,19 @@ void GraphCanvas::timerCallback()
     const auto elapsed = juce::jlimit (0.0, 0.5, now - lastTick);
     lastTick = now;
 
-    meters.poll (builder, session.getNodeIds(), elapsed);
+    const auto all = session.getNodeIds();
+    meters.poll (builder, all, elapsed);
+
+    // A group's ports show the levels at its pins.
+    for (auto id : all)
+        if (session.isGroup (id))
+        {
+            const auto ins = session.getPins (id, true), outs = session.getPins (id, false);
+            for (int k = 0; k < ins.size(); ++k)
+                meters.alias (id, true, k, ins[k], true, 0);
+            for (int k = 0; k < outs.size(); ++k)
+                meters.alias (id, false, k, outs[k], false, 0);
+        }
 
     for (auto& n : nodeComponents)
         n->updateMeter();
@@ -468,6 +612,7 @@ void GraphCanvas::paint (juce::Graphics& g)
 void GraphCanvas::resized()
 {
     overlay->setBounds (getLocalBounds());
+    breadcrumbs->setTopLeftPosition (12, 12);
 
     auto area = getLocalBounds().reduced (12);
     if (minimap->isVisible())
@@ -525,6 +670,9 @@ void GraphCanvas::fitAll()
 //==============================================================================
 void GraphCanvas::deleteSelection()
 {
+    if (isLocked())
+        return;
+
     if (! selection.getNodes().isEmpty())
     {
         const auto nodes = selection.getNodes();
@@ -543,7 +691,7 @@ void GraphCanvas::deleteSelection()
 
 void GraphCanvas::duplicateSelection()
 {
-    if (selection.getNodes().isEmpty())
+    if (selection.getNodes().isEmpty() || isLocked())
         return;
 
     session.beginAction ("Duplicate");
@@ -552,7 +700,59 @@ void GraphCanvas::duplicateSelection()
 
 void GraphCanvas::selectAll()
 {
-    selection.set (session.getNodeIds(), {});
+    selection.set (session.getChildren (scope), {});
+}
+
+void GraphCanvas::groupSelection()
+{
+    auto nodes = selection.getNodes();
+    nodes.removeIf ([this] (auto id) { return nodes::isGroupPin (session.findNode (id)[model::ids::type].toString().toStdString()); });
+    if (nodes.isEmpty() || isLocked())
+        return;
+
+    session.beginAction ("Group");
+    if (const auto group = session.groupNodes (nodes); group != 0)
+        selection.selectOnly (group);
+}
+
+void GraphCanvas::ungroupSelection()
+{
+    if (isLocked())
+        return;
+
+    juce::Array<graph::NodeId> groups;
+    for (auto id : selection.getNodes())
+        if (session.isGroup (id))
+            groups.add (id);
+
+    if (groups.isEmpty())
+        return;
+
+    session.beginAction ("Ungroup");
+    const auto before = session.getChildren (scope);
+    for (auto group : groups)
+        session.ungroup (group);
+
+    // Select what came out.
+    auto after = session.getChildren (scope);
+    after.removeValuesIn (before);
+    selection.set (after, {});
+}
+
+void GraphCanvas::saveAsTemplate (graph::NodeId node)
+{
+    askForText (this, "Save as template", "Save \"" + session.getNodeName (node) + "\" and everything inside it as a template. "
+                                          "It will be in the add-node search, under Templates.",
+                session.getNodeName (node), "Save",
+                [safe = juce::Component::SafePointer (this), node] (const juce::String& name)
+                {
+                    if (safe == nullptr || ! safe->session.findNode (node).isValid())
+                        return;
+
+                    const auto error = model::saveTemplate (safe->session, node, name, model::defaultTemplatesFolder());
+                    if (error.isNotEmpty())
+                        juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Couldn't save the template", error);
+                });
 }
 
 //==============================================================================
@@ -664,7 +864,7 @@ void GraphCanvas::mouseExit (const juce::MouseEvent&)
 
 void GraphCanvas::mouseDoubleClick (const juce::MouseEvent& e)
 {
-    if (e.mods.isLeftButtonDown() && wireAt (e.position) == 0)
+    if (e.mods.isLeftButtonDown() && wireAt (e.position) == 0 && ! isLocked())
         showQuickAddFor (e.position, {});
 }
 
@@ -695,7 +895,23 @@ bool GraphCanvas::keyPressed (const juce::KeyPress& key)
 
     if (key == juce::KeyPress::tabKey)
     {
-        showQuickAdd();
+        if (! isLocked())
+            showQuickAdd();
+        return true;
+    }
+
+    if (command && key.getKeyCode() == 'G')
+    {
+        if (key.getModifiers().isShiftDown())
+            ungroupSelection();
+        else
+            groupSelection();
+        return true;
+    }
+
+    if (key == juce::KeyPress::returnKey && selection.getNodes().size() == 1 && session.isGroup (selection.getNodes().getFirst()))
+    {
+        setScope (selection.getNodes().getFirst());
         return true;
     }
 
@@ -708,6 +924,10 @@ bool GraphCanvas::keyPressed (const juce::KeyPress& key)
             wireDrag.reset();
             dragMode = DragMode::none;
             repaint();
+        }
+        else if (selection.isEmpty() && scope != 0)
+        {
+            goUp();
         }
         else
         {
@@ -790,6 +1010,12 @@ void GraphCanvas::nodeMouseDown (NodeComponent& node, const juce::MouseEvent& e)
         selection.selectOnly (id);
     }
 
+    if (isLocked())
+    {
+        dragMode = DragMode::none;
+        return;
+    }
+
     dragMode = DragMode::nodes;
     dragStartPositions.clear();
     for (auto n : selection.getNodes())
@@ -857,6 +1083,9 @@ void GraphCanvas::nodeMouseUp (NodeComponent& node, const juce::MouseEvent& e)
 void GraphCanvas::portMouseDown (const PortRef& port, const juce::MouseEvent& e)
 {
     closeQuickAdd();
+
+    if (isLocked())
+        return;
 
     grabKeyboardFocus();
 
@@ -1029,21 +1258,40 @@ void GraphCanvas::showQuickAddFor (juce::Point<float> viewPoint, std::optional<P
 {
     closeQuickAdd();
 
-    QuickAddPanel::Filter filter;
-    if (connectTo)
+    if (isLocked())
+        return;
+
+    // Pins only go inside groups; an empty group is only useful on its own.
+    const auto inGroup = scope != 0;
+    QuickAddPanel::Filter filter = [inGroup, connectTo] (const nodes::NodeType& type)
     {
-        const auto needInputs = ! connectTo->input;
-        filter = [needInputs] (const nodes::NodeType& type)
-        {
-            const auto layout = type.layout (type.defaults());
-            return needInputs ? ! layout.inputs.empty() : ! layout.outputs.empty();
-        };
+        if (nodes::isGroupPin (type.id) && ! inGroup)
+            return false;
+
+        if (! connectTo)
+            return true;
+
+        if (type.id == nodes::types::group)
+            return false;
+
+        const auto layout = type.layout (type.defaults());
+        return ! connectTo->input ? ! layout.inputs.empty() : ! layout.outputs.empty();
+    };
+
+    auto entries = QuickAddPanel::nodeEntries (filter);
+    quickAddTemplates.clear();
+    for (auto& t : model::getTemplates (model::defaultTemplatesFolder()))
+    {
+        entries.push_back ({ "template:" + std::to_string (quickAddTemplates.size()), t.name, "Templates", "box",
+                             t.file == juce::File() ? juce::String ("Built in: a group ready to use. Double-click it to see inside.")
+                                                    : juce::String ("Your template, saved from a group.") });
+        quickAddTemplates.push_back (std::move (t));
     }
 
     const auto world = viewToWorld (viewPoint);
 
     quickAdd = std::make_unique<QuickAddPanel> (
-        connectTo ? "Add and connect" : "Add node", filter,
+        connectTo ? "Add and connect" : "Add node", std::move (entries),
         [this, world, connectTo] (const std::string& typeId)
         {
             closeQuickAdd();
@@ -1062,6 +1310,31 @@ void GraphCanvas::showQuickAddFor (juce::Point<float> viewPoint, std::optional<P
 
 void GraphCanvas::addNodeFromQuickAdd (const std::string& typeId, juce::Point<float> world, std::optional<PortRef> connectTo)
 {
+    if (typeId.rfind ("template:", 0) == 0)
+    {
+        const auto index = (size_t) std::stoi (typeId.substr (9));
+        if (index >= quickAddTemplates.size())
+            return;
+
+        const auto& t = quickAddTemplates[index];
+        session.beginAction ("Add " + t.name);
+        const auto id = model::addTemplate (session, t, scope, snap (world));
+        if (id == 0)
+            return;
+
+        if (connectTo)
+        {
+            const auto layout = session.getLayout (id);
+            for (int p = 0; p < (int) (connectTo->input ? layout.outputs.size() : layout.inputs.size()); ++p)
+                if ((connectTo->input ? session.addWire (id, p, connectTo->node, connectTo->port)
+                                      : session.addWire (connectTo->node, connectTo->port, id, p)) != 0)
+                    break;
+        }
+
+        selection.selectOnly (id);
+        return;
+    }
+
     const auto* type = nodes::NodeRegistry::builtIn().find (typeId);
     if (type == nullptr)
         return;
@@ -1090,7 +1363,9 @@ void GraphCanvas::addNodeFromQuickAdd (const std::string& typeId, juce::Point<fl
     }
 
     session.beginAction ("Add " + juce::String (type->name));
-    const auto id = session.addNode (typeId, snap (position), params);
+    const auto id = session.addNode (typeId, snap (position), params, scope);
+    if (id == 0)
+        return;
 
     if (connectTo)
     {
@@ -1118,7 +1393,7 @@ void GraphCanvas::showCanvasMenu (juce::Point<float> viewPoint)
 {
     juce::PopupMenu menu;
 
-    if (! selection.getWires().isEmpty())
+    if (! selection.getWires().isEmpty() && ! isLocked())
     {
         const auto wire = selection.getWires().getFirst();
         menu.addItem ("Delete wire", [this] { deleteSelection(); });
@@ -1130,9 +1405,12 @@ void GraphCanvas::showCanvasMenu (juce::Point<float> viewPoint)
         menu.addSeparator();
     }
 
-    menu.addItem ("Add node...", [this, viewPoint] { showQuickAddFor (viewPoint, {}); });
+    menu.addItem ("Add node...", ! isLocked(), false, [this, viewPoint] { showQuickAddFor (viewPoint, {}); });
     menu.addItem ("Select all", [this] { selectAll(); });
     menu.addItem ("Fit to view", [this] { fitAll(); });
+    if (scope != 0)
+        menu.addItem ("Up to " + (session.getParent (scope) != 0 ? session.getNodeName (session.getParent (scope)) : juce::String ("the session")),
+                      [this] { goUp(); });
     menu.showMenuAsync (juce::PopupMenu::Options().withMousePosition());
 }
 
@@ -1140,8 +1418,29 @@ void GraphCanvas::showNodeMenu (NodeComponent& node)
 {
     const auto id = node.getId();
     const auto several = selection.getNodes().size() > 1;
+    const auto locked = isLocked();
+    const auto isPin = nodes::isGroupPin (session.findNode (id)[model::ids::type].toString().toStdString());
     juce::PopupMenu menu;
 
+    if (session.isGroup (id))
+    {
+        menu.addItem ("Open group", [this, id] { setScope (id); });
+        menu.addSeparator();
+    }
+
+    juce::PopupMenu faces;
+    addFaceMenu (faces, id);
+    menu.addSubMenu ("Add face to panel", faces, ! isPin);
+
+    if (locked)
+    {
+        menu.addSeparator();
+        menu.addItem ("Show Lock is on: turn it off in the toolbar to edit", false, false, [] {});
+        menu.showMenuAsync (juce::PopupMenu::Options().withMousePosition());
+        return;
+    }
+
+    menu.addSeparator();
     menu.addItem ("Rename", ! several, false,
                   [safe = juce::Component::SafePointer<NodeComponent> (&node)]
                   {
@@ -1160,8 +1459,38 @@ void GraphCanvas::showNodeMenu (NodeComponent& node)
         session.removeWires (wires);
     });
     menu.addSeparator();
+    menu.addItem ("Group (Ctrl+G)", ! isPin, false, [this] { groupSelection(); });
+    if (session.isGroup (id))
+    {
+        menu.addItem ("Ungroup (Ctrl+Shift+G)", [this] { ungroupSelection(); });
+        menu.addItem ("Save as template...", ! several, false, [this, id] { saveAsTemplate (id); });
+    }
+    menu.addSeparator();
     menu.addItem (several ? "Delete nodes" : "Delete", [this] { deleteSelection(); });
     menu.showMenuAsync (juce::PopupMenu::Options().withMousePosition());
+}
+
+void GraphCanvas::addFaceMenu (juce::PopupMenu& menu, graph::NodeId node)
+{
+    for (const auto& panel : session.getPanels())
+    {
+        const auto panelId = (juce::int64) panel[model::ids::id];
+        menu.addItem (panel[model::ids::name].toString(), [this, panelId, node]
+        {
+            session.beginAction ("Add face");
+            addFaceToPanel (session, panelId, node);
+        });
+    }
+
+    if (menu.getNumItems() > 0)
+        menu.addSeparator();
+
+    menu.addItem ("New panel", [this, node]
+    {
+        session.beginAction ("Add panel");
+        const auto panelId = session.addPanel ("Panel " + juce::String (session.getPanels().getNumChildren() + 1));
+        addFaceToPanel (session, panelId, node);
+    });
 }
 
 } // namespace spm::ui

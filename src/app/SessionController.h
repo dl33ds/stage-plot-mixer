@@ -26,12 +26,18 @@ public:
 
 private:
     void valueTreePropertyChanged (juce::ValueTree&, const juce::Identifier&) override;
-    void valueTreeChildAdded (juce::ValueTree&, juce::ValueTree&) override { changed (true); }
-    void valueTreeChildRemoved (juce::ValueTree&, juce::ValueTree&, int) override { changed (true); }
+    void valueTreeChildAdded (juce::ValueTree& parent, juce::ValueTree&) override { changed (affectsAudio (parent)); }
+    void valueTreeChildRemoved (juce::ValueTree& parent, juce::ValueTree&, int) override { changed (affectsAudio (parent)); }
     void valueTreeRedirected (juce::ValueTree&) override { changed (true); }
     void handleAsyncUpdate() override;
 
     void changed (bool needsRebuild);
+
+    /** Nodes and wires make the sound; panels, the view and layouts don't. */
+    static bool affectsAudio (const juce::ValueTree& parent)
+    {
+        return parent.hasType (model::ids::nodes) || parent.hasType (model::ids::wires) || parent.hasType (model::ids::session);
+    }
 
     model::Session& session;
     AudioEngine& engine;

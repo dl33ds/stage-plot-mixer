@@ -48,6 +48,9 @@ TEST_CASE ("Every built-in type has consistent parameters and creates a processo
         REQUIRE (type.sanitise (values) == values);
 
         const auto layout = type.layout (values);
+        if (type.id == types::group)
+            continue;  // flattened away: groups never reach the engine
+
         auto processor = type.create (values, layout);
         REQUIRE (processor->getNumInputPorts() == (int) layout.inputs.size());
         REQUIRE (processor->getNumOutputPorts() == (int) layout.outputs.size());

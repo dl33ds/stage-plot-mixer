@@ -426,6 +426,19 @@ public:
     }
 };
 
+/** A group's input or output pin, in the flattened graph: the signal passes straight through. */
+class PassThroughProcessor final : public NodeProcessor
+{
+public:
+    PassThroughProcessor (int channels, int numParams) : NodeProcessor ({ channels }, { channels }, numParams) {}
+
+    void process (const ProcessContext&, const ChannelSpan* inputs, const ChannelSpan* outputs) noexcept override
+    {
+        for (int ch = 0; ch < outputs[0].numChannels; ++ch)
+            std::copy_n (inputs[0].channel (ch), outputs[0].numSamples, outputs[0].channel (ch));
+    }
+};
+
 /** A sink whose only job is to be metered (input meters are measured by the runtime). */
 class MeterProcessor final : public NodeProcessor
 {
@@ -489,6 +502,13 @@ ParamSpec choiceParam (std::string id, std::string name, std::vector<std::string
     return p;
 }
 
+/** For settings you make once, not while mixing. */
+ParamSpec notOnFace (ParamSpec p)
+{
+    p.onFace = false;
+    return p;
+}
+
 int channelsOf (const NodeType& type, const ParamValues& v, std::string_view id = "channels")
 {
     const auto index = type.paramIndex (id);
@@ -507,7 +527,7 @@ NodeRegistry makeRegistry()
         t.category = "Sources";
         t.icon = "mic";
         t.description = "Channels coming in from the audio interface.";
-        t.params = { integerParam ("first", "First channel", 1, 256, 1, false, "The first interface input this node reads"),
+        t.params = { notOnFace (integerParam ("first", "First channel", 1, 256, 1, false, "The first interface input this node reads")),
                      integerParam ("channels", "Channels", 1, maxPortChannels, 1, true) };
         t.layout = [] (const ParamValues& v)
         {
@@ -528,7 +548,7 @@ NodeRegistry makeRegistry()
         t.category = "Destinations";
         t.icon = "speaker";
         t.description = "Channels going out to the audio interface.";
-        t.params = { integerParam ("first", "First channel", 1, 256, 1, false, "The first interface output this node writes"),
+        t.params = { notOnFace (integerParam ("first", "First channel", 1, 256, 1, false, "The first interface output this node writes")),
                      integerParam ("channels", "Channels", 1, maxPortChannels, 2, true) };
         t.layout = [] (const ParamValues& v)
         {
@@ -670,7 +690,7 @@ NodeRegistry makeRegistry()
         t.icon = "list-filter";
         t.description = "Takes some channels out of a multi-channel signal, e.g. channels 3–4.";
         t.params = { integerParam ("inputs", "Input channels", 1, maxPortChannels, 8, true),
-                     integerParam ("first", "First channel", 1, maxPortChannels, 1, false),
+                     notOnFace (integerParam ("first", "First channel", 1, maxPortChannels, 1, false)),
                      integerParam ("count", "Channels to take", 1, maxPortChannels, 1, true) };
         t.layout = [] (const ParamValues& v)
         {
@@ -765,10 +785,10 @@ NodeRegistry makeRegistry()
         t.description = "Records whatever is wired into it when you press Record. Wire it straight from inputs, "
                         "after processing, or from a mix.";
         t.params = { toggleParam ("armed", "Armed", true, "Only armed recorders record when you press Record"),
-                     choiceParam ("format", "Format", { "Auto", "24-bit", "32-bit float" }, recorder::formatAuto,
-                                  "Auto: 24-bit when wired straight from hardware inputs, otherwise 32-bit float (which can't clip)"),
-                     choiceParam ("files", "Files", { "Auto", "One per channel", "Single file" }, recorder::filesAuto,
-                                  "Auto: one file for mono or stereo, otherwise one mono file per channel"),
+                     notOnFace (choiceParam ("format", "Format", { "Auto", "24-bit", "32-bit float" }, recorder::formatAuto,
+                                  "Auto: 24-bit when wired straight from hardware inputs, otherwise 32-bit float (which can't clip)")),
+                     notOnFace (choiceParam ("files", "Files", { "Auto", "One per channel", "Single file" }, recorder::filesAuto,
+                                  "Auto: one file for mono or stereo, otherwise one mono file per channel")),
                      integerParam ("channels", "Channels", 1, maxPortChannels, 2, true) };
         t.layout = [] (const ParamValues& v)
         {
@@ -781,6 +801,50 @@ NodeRegistry makeRegistry()
         };
         registry.add (std::move (t));
     }
+
+    //--------------------------------------------------------------------------
+    {
+        // A group has no processor of its own: the session flattens it away, wiring
+        // straight to its pins. Its ports come from the pins inside it.
+        NodeType t;
+        t.id = types::group;
+        t.name = "Group";
+        t.category = "Groups";
+        t.icon = "box";
+        t.description = "Holds other nodes. Double-click to go inside; add Group Input and Group Output pins "
+                        "there to give it ports.";
+        t.layout = [] (const ParamValues&) { return PortLayout {}; };
+        t.create = [] (const ParamValues&, const PortLayout&) -> std::unique_ptr<NodeProcessor> { return nullptr; };
+        registry.add (std::move (t));
+    }
+
+    auto pin = [&registry] (std::string_view id, std::string name, std::string icon, std::string description)
+    {
+        NodeType t;
+        t.id = id;
+        t.name = std::move (name);
+        t.category = "Groups";
+        t.icon = std::move (icon);
+        t.description = std::move (description);
+        t.params = { integerParam ("channels", "Channels", 1, maxPortChannels, 1, true) };
+        const std::string typeId (id);
+
+        // In the flattened graph a pin passes its signal through. On the canvas an input
+        // pin shows only its output and an output pin only its input (see Session::getLayout).
+        t.layout = [typeId] (const ParamValues& v)
+        {
+            const auto n = channelsOf (*NodeRegistry::builtIn().find (typeId), v);
+            return PortLayout { { { "In", n } }, { { "Out", n } } };
+        };
+        t.create = [] (const ParamValues&, const PortLayout& l) -> std::unique_ptr<NodeProcessor>
+        {
+            return std::make_unique<PassThroughProcessor> (l.inputs[0].channels, 1);
+        };
+        registry.add (std::move (t));
+    };
+
+    pin (types::groupInput, "Group Input", "log-in", "An input of the group this is in: what's wired into the group comes out here.");
+    pin (types::groupOutput, "Group Output", "log-out", "An output of the group this is in: what's wired in here leaves the group.");
 
     return registry;
 }

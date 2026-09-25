@@ -12,12 +12,21 @@ namespace spm::ui
 namespace
 {
 constexpr int searchHeight = 34, titleHeight = 26, maxListHeight = 340;
-const char* const categoryOrder[] = { "Sources", "Mixing", "Processing", "Routing", "Analysis", "Destinations" };
+const char* const categoryOrder[] = { "Sources", "Mixing", "Processing", "Routing", "Analysis", "Destinations", "Groups", "Templates" };
 } // namespace
 
-QuickAddPanel::QuickAddPanel (juce::String t, Filter f, std::function<void (const std::string&)> chosen,
+std::vector<QuickAddPanel::Entry> QuickAddPanel::nodeEntries (const Filter& filter)
+{
+    std::vector<Entry> result;
+    for (auto& type : nodes::NodeRegistry::builtIn().all())
+        if (filter == nullptr || filter (type))
+            result.push_back ({ type.id, type.name, type.category, type.icon, type.description });
+    return result;
+}
+
+QuickAddPanel::QuickAddPanel (juce::String t, std::vector<Entry> e, std::function<void (const std::string&)> chosen,
                               std::function<void()> dismissed)
-    : title (std::move (t)), filter (std::move (f)), onChosen (std::move (chosen)), onDismissed (std::move (dismissed))
+    : title (std::move (t)), entries (std::move (e)), onChosen (std::move (chosen)), onDismissed (std::move (dismissed))
 {
     setMouseClickGrabsKeyboardFocus (false);
     setWantsKeyboardFocus (false);
@@ -54,10 +63,9 @@ void QuickAddPanel::refilter()
     rows.clear();
     const auto query = search.getText().trim();
 
-    std::vector<const nodes::NodeType*> candidates;
-    for (auto& type : nodes::NodeRegistry::builtIn().all())
-        if (filter == nullptr || filter (type))
-            candidates.push_back (&type);
+    std::vector<const Entry*> candidates;
+    for (auto& entry : entries)
+        candidates.push_back (&entry);
 
     if (query.isEmpty())
     {
@@ -78,15 +86,15 @@ void QuickAddPanel::refilter()
     else
     {
         // Names starting with the query first, then names containing it, then descriptions.
-        std::vector<std::pair<int, const nodes::NodeType*>> scored;
+        std::vector<std::pair<int, const Entry*>> scored;
         for (auto* type : candidates)
         {
-            const auto name = juce::String (type->name);
+            const auto& name = type->name;
             auto score = -1;
             if (name.startsWithIgnoreCase (query)) score = 0;
             else if (name.containsIgnoreCase (query)) score = 1;
-            else if (juce::String (type->category).containsIgnoreCase (query)) score = 2;
-            else if (juce::String (type->description).containsIgnoreCase (query)) score = 3;
+            else if (type->category.containsIgnoreCase (query)) score = 2;
+            else if (type->description.containsIgnoreCase (query)) score = 3;
             if (score >= 0)
                 scored.push_back ({ score, type });
         }

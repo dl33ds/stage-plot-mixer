@@ -67,7 +67,14 @@ void SessionController::valueTreePropertyChanged (juce::ValueTree& tree, const j
         return;
     }
 
-    // Names and positions don't affect the audio.
+    // Moving a node into or out of a group changes how the groups flatten.
+    if (tree.hasType (model::ids::node) && (property == model::ids::parent || property == model::ids::type))
+    {
+        changed (true);
+        return;
+    }
+
+    // Names, positions, panels and the view don't affect the audio.
     changed (false);
 }
 

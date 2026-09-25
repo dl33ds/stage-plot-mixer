@@ -16,12 +16,15 @@ target_sources(StagePlotMixer PRIVATE
     SessionController.cpp
     SimulatedAudioDevice.cpp
     StatusBar.cpp
+    ../ui/Dialogs.cpp
+    ../ui/FaceComponent.cpp
     ../ui/GraphCanvas.cpp
     ../ui/Icons.cpp
     ../ui/Inspector.cpp
     ../ui/LevelMeter.cpp
     ../ui/MeterCache.cpp
     ../ui/NodeComponent.cpp
+    ../ui/PanelView.cpp
     ../ui/ParamFormat.cpp
     ../ui/QuickAddPanel.cpp
     ../ui/Theme.cpp
