@@ -10,6 +10,9 @@ namespace spm::app
 
 AudioEngine::AudioEngine()
 {
+    // Create the platform's driver types (ASIO, Windows Audio...) first: JUCE only adds them
+    // while its list is empty, so adding the simulated type first would hide all hardware.
+    deviceManager.getAvailableDeviceTypes();
     deviceManager.addAudioDeviceType (std::make_unique<SimulatedAudioDeviceType>());
     deviceManager.addChangeListener (this);
 }
@@ -25,6 +28,11 @@ AudioEngine::~AudioEngine()
 juce::String AudioEngine::initialise (const juce::XmlElement* savedState)
 {
     const auto maxChannels = engine::EngineCore::maxDeviceChannels;
+
+    // The simulated device is for trying things out; start on real hardware when there is some.
+    if (savedState != nullptr && savedState->getStringAttribute ("deviceType") == SimulatedAudioDeviceType::typeName)
+        savedState = nullptr;
+
     auto error = deviceManager.initialise (maxChannels, maxChannels, savedState, savedState == nullptr);
 
     if (savedState == nullptr || deviceManager.getCurrentAudioDevice() == nullptr)
