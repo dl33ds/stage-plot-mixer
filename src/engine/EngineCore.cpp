@@ -108,7 +108,7 @@ void EngineCore::process (const float* const* inputs, int numInputs, float* cons
         }
 
         // Safe start / mute: one ramp across all outputs.
-        if (outputGain.isRamping() || outputGain.getCurrent() != 1.0f)
+        if (outputGain.isRamping() || outputGain.getCurrent() < 1.0f)
         {
             const auto startState = outputGain;
 

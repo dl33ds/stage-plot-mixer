@@ -12,31 +12,36 @@ target_sources(StagePlotMixer PRIVATE
     Main.cpp
     AudioEngine.cpp
     MainComponent.cpp
+    SessionController.cpp
     SimulatedAudioDevice.cpp
+    StatusBar.cpp
+    ../ui/GraphCanvas.cpp
+    ../ui/Icons.cpp
+    ../ui/Inspector.cpp
     ../ui/LevelMeter.cpp
+    ../ui/MeterCache.cpp
+    ../ui/NodeComponent.cpp
+    ../ui/ParamFormat.cpp
+    ../ui/QuickAddPanel.cpp
+    ../ui/Theme.cpp
 )
 
 target_compile_definitions(StagePlotMixer PRIVATE
-    JUCE_WEB_BROWSER=0
-    JUCE_USE_CURL=0
     JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:StagePlotMixer,JUCE_PRODUCT_NAME>"
     JUCE_APPLICATION_VERSION_STRING="$<TARGET_PROPERTY:StagePlotMixer,JUCE_VERSION>"
-    JUCE_ASIO=1
-    JUCE_WASAPI=1
-    JUCE_DIRECTSOUND=1
-    JUCE_ALSA=1
-    $<$<PLATFORM_ID:Linux>:JUCE_JACK=1>
     SPM_VERSION="${PROJECT_VERSION}"
     SPM_GIT_HASH="${SPM_GIT_HASH}"
 )
 
-target_link_libraries(StagePlotMixer
-    PRIVATE
-        spm_audio
-        juce::juce_audio_utils
-        juce::juce_gui_extra
-    PUBLIC
-        juce::juce_recommended_config_flags
-        juce::juce_recommended_lto_flags
-        juce::juce_recommended_warning_flags
-)
+file(GLOB SPM_ICON_FILES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/resources/icons/*.svg)
+
+juce_add_binary_data(spm_resources
+    NAMESPACE spm_resources
+    HEADER_NAME SpmResources.h
+    SOURCES
+        ${PROJECT_SOURCE_DIR}/resources/fonts/Inter-Regular.ttf
+        ${PROJECT_SOURCE_DIR}/resources/fonts/Inter-Medium.ttf
+        ${PROJECT_SOURCE_DIR}/resources/fonts/Inter-SemiBold.ttf
+        ${SPM_ICON_FILES})
+
+target_link_libraries(StagePlotMixer PRIVATE spm_model spm_resources)

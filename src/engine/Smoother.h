@@ -70,7 +70,7 @@ public:
     {
         if (! isRamping())
         {
-            if (current != 1.0f)
+            if (current < 1.0f || current > 1.0f)
                 for (int i = 0; i < numSamples; ++i)
                     data[i] *= current;
 

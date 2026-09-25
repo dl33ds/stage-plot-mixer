@@ -2,7 +2,7 @@
 
 The download contains two programs:
 
-- **Stage Plot Mixer.exe**: the mixer itself. For now it is an engine test: meters for every input, and a monitor mix to outputs 1–2 (Test D).
+- **Stage Plot Mixer.exe**: the mixer itself: a node editor where you wire inputs through faders, pans and buses to outputs (Test D).
 - **spm-diag.exe**: a small diagnostics program (Tests A–C).
 
 `spm-diag` is a small diagnostics program. It checks that your PC and audio interfaces work before the full mixer is built. It lists every audio driver, device and channel, checks the FireWire card, and runs two tests. Everything it shows is saved to a report file for the developers.
@@ -60,23 +60,42 @@ Then:
 
 Run test A again, but choose a **Windows Audio** device (for example your speakers or built-in microphone). This checks the non-ASIO path.
 
-## 6. Test D: Mixer engine, 10 minutes (Stage Plot Mixer.exe)
+## 6. Test D: The mixer, about 20 minutes (Stage Plot Mixer.exe)
 
-This checks that the mixer's audio engine runs cleanly on your interface.
+This checks the node editor and that the audio engine runs cleanly on your interface.
+
+**Setup**
 
 1. Close spm-diag and any other audio programs, then double-click **Stage Plot Mixer.exe**.
-2. The status bar at the bottom should show **Focusrite USB ASIO (ASIO)**. If it doesn't, click **Audio settings...**, choose type **ASIO** and device **Focusrite USB ASIO**.
-3. In **Audio settings...**, set the sample rate to **48000** and the buffer size to **128**, then close the settings window.
-4. Turn your headphones or speakers **down**. Outputs start **muted** (the red **Unmute outputs** button). Click it; the sound fades in.
-5. Speak or play into the inputs: the **Inputs** meters move, and you hear the inputs on outputs 1–2. **Monitor level** sets how loud. Tick **Test tone** to hear a 1 kHz tone, then untick it.
+2. The status bar at the bottom should show **Focusrite USB ASIO (ASIO)**. If it doesn't, click **Audio settings**, choose type **ASIO** and device **Focusrite USB ASIO**.
+3. In **Audio settings**, set the sample rate to **48000** and the buffer size to **128**, then close the settings window.
+4. You should see a ready-made mix: **Input 1** and **Input 2** each go through a **Fader** and a **Pan** into the **Master Bus**, then the **Master Fader** and **Main Out** (outputs 1–2).
+
+**Sound**
+
+5. Turn your headphones or speakers **down**. Outputs start **muted** (the red **Outputs muted** button, top right). Click it; the sound fades in.
+6. Speak or play into the inputs. The meters on each node move, and the wires glow brighter with signal. You hear the inputs on outputs 1–2.
    If you hear yourself twice (slightly delayed), turn the Scarlett's **Direct Monitor** off.
-6. Click **Reset counters**, then leave it running for **10 minutes** (you can keep playing into it). Use the PC normally but don't open other audio programs.
-7. Click **Copy report**, and paste the text into a new issue (or a Notepad file).
+7. Drag the **Level** bar on **Fader 1** and the **Pan** bar on **Pan 1**. Double-click a bar to reset it. Click **Mute**. All of these should be smooth and click-free.
+
+**Editing** (it's fine to break the mix; **New** starts again)
+
+8. Click a node: its settings appear on the right. Click a wire: you can set its gain there.
+9. Press **Tab** (or double-click empty space), type `gain`, press **Enter**. A Gain node appears.
+10. Drag from an output dot (right side) to an input dot (left side) to connect. Drag a wire off an input dot to move or remove it. Dropping a wire on empty space offers a node to add, already connected.
+11. Move nodes by dragging their title. Drag on empty space to select several. **Delete** removes, **Ctrl+D** duplicates, **Ctrl+Z** undoes.
+12. Pan with right-drag, zoom with the mouse wheel, press **F** to fit everything.
+13. Click **Save**, give it a name, close the program, and open it again. Your session should come back.
+
+**Stability**
+
+14. Click **Reset counters**, then leave it running for **10 minutes** (you can keep playing into it). Use the PC normally but don't open other audio programs.
+15. Click **Copy report**, and paste the text into a new issue (or a Notepad file).
 
 **What we're looking for:** `Verdict: PASS`, meaning 0 late, 0 overloads and 0 driver dropouts over the 10 minutes, and no clicks or dropouts heard. Also tell us:
-- whether muting/unmuting and the test tone were click-free,
+- whether muting, fader moves and rewiring were click-free,
 - the CPU figures shown in the status bar,
-- anything that looks wrong or is hard to read.
+- anything that was confusing, looks wrong, or is hard to read (screenshots help).
 
 To try the mixer without an interface, choose the **Simulated** device type in Audio settings. It has 32 inputs carrying quiet test tones.
 

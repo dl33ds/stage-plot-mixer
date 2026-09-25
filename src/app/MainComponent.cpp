@@ -3,6 +3,7 @@
 
 #include "app/MainComponent.h"
 
+#include "model/Templates.h"
 #include "ui/Theme.h"
 
 #include <juce_audio_utils/juce_audio_utils.h>
@@ -12,275 +13,290 @@ namespace spm::app
 
 namespace
 {
-
-namespace types = nodes::types;
-
-// Fixed node ids for the test graph.
-constexpr graph::NodeId inputBase = 1000, panBase = 2000;
-constexpr graph::NodeId busId = 10, faderId = 11, mainOutId = 12, toneId = 13;
-
-graph::NodeDesc makeNode (graph::NodeId id, std::string_view type, nodes::ParamValues params)
-{
-    const auto* t = nodes::NodeRegistry::builtIn().find (type);
-    auto values = t->defaults();
-    for (size_t i = 0; i < params.size() && i < values.size(); ++i)
-        values[i] = params[i];
-    return { id, std::string (type), values };
+const juce::String fileExtension = ".mixproj";
 }
 
-void styleLabel (juce::Label& label, float size, juce::Colour colour)
+MainComponent::MainComponent (AudioEngine& e, juce::PropertiesFile& s) : engine (e), settings (s)
 {
-    label.setFont (juce::FontOptions (size));
-    label.setColour (juce::Label::textColourId, colour);
-}
+    for (auto* b : { &newButton, &openButton, &saveButton, &saveAsButton, &undoButton, &redoButton, &addButton,
+                     &muteButton, &settingsButton })
+        addAndMakeVisible (b);
 
-} // namespace
+    addAndMakeVisible (canvas);
+    addAndMakeVisible (inspector);
+    addAndMakeVisible (statusBar);
 
-MainComponent::MainComponent (AudioEngine& e) : engine (e)
-{
-    for (auto* label : { &title, &inputsHeading, &outputsHeading, &monitorLevelLabel,
-                         &statusDevice, &statusFormat, &statusCpu, &statusCounters })
-        addAndMakeVisible (*label);
-
-    title.setText ("Stage Plot Mixer - engine test", juce::dontSendNotification);
-    styleLabel (title, 20.0f, ui::theme::text);
-    inputsHeading.setText ("Inputs", juce::dontSendNotification);
-    outputsHeading.setText ("Outputs", juce::dontSendNotification);
-    styleLabel (inputsHeading, 14.0f, ui::theme::textMuted);
-    styleLabel (outputsHeading, 14.0f, ui::theme::textMuted);
-
-    for (auto* label : { &statusDevice, &statusFormat, &statusCpu, &statusCounters })
-        styleLabel (*label, 13.0f, ui::theme::textMuted);
-
-    addAndMakeVisible (monitorToggle);
-    addAndMakeVisible (toneToggle);
-    monitorToggle.setToggleState (true, juce::dontSendNotification);
-    monitorToggle.onClick = toneToggle.onClick = [this] { pushParameters(); };
-
-    addAndMakeVisible (monitorLevel);
-    monitorLevel.setRange (-60.0, 10.0, 0.5);
-    monitorLevel.setValue (-12.0, juce::dontSendNotification);
-    monitorLevel.setTextValueSuffix (" dB");
-    monitorLevel.setSliderStyle (juce::Slider::LinearHorizontal);
-    monitorLevel.setTextBoxStyle (juce::Slider::TextBoxRight, false, 72, 22);
-    monitorLevel.onValueChange = [this] { pushParameters(); };
-    monitorLevelLabel.setText ("Monitor level", juce::dontSendNotification);
-    styleLabel (monitorLevelLabel, 14.0f, ui::theme::text);
-
-    for (auto* button : { &settingsButton, &resetButton, &reportButton, &muteButton })
-        addAndMakeVisible (*button);
-
+    newButton.onClick = [this] { newSession(); };
+    openButton.onClick = [this] { openSession(); };
+    saveButton.onClick = [this] { save(); };
+    saveAsButton.onClick = [this] { saveAs(); };
+    undoButton.onClick = [this] { session.getUndoManager().undo(); };
+    redoButton.onClick = [this] { session.getUndoManager().redo(); };
+    addButton.onClick = [this] { canvas.showQuickAdd (canvas.getLocalBounds().getCentre().toFloat()); };
+    muteButton.onClick = [this] { engine.getCore().setOutputsMuted (! engine.getCore().areOutputsMuted()); timerCallback(); };
     settingsButton.onClick = [this] { showAudioSettings(); };
-    resetButton.onClick = [this]
+
+    canvas.getDeviceChannelNames = inspector.getDeviceChannelNames = [this] (bool inputs) { return deviceChannelNames (inputs); };
+    inspector.onDelete = [this] { canvas.deleteSelection(); };
+    inspector.onDuplicate = [this] { canvas.duplicateSelection(); };
+    canvas.setMinimapVisible (settings.getBoolValue ("showMinimap", true));
+
+    statusBar.getReportExtras = [this]
     {
-        engine.resetCounters();
-        countersSince = juce::Time::getMillisecondCounterHiRes() / 1000.0;
-        peakCpu = 0.0f;
+        return "Session:     " + juce::String (session.getNodeIds().size()) + " nodes, "
+               + juce::String (session.getState().getChildWithName (model::ids::wires).getNumChildren()) + " wires\n";
     };
-    reportButton.onClick = [this] { copyReport(); };
-    muteButton.onClick = [this] { engine.getCore().setOutputsMuted (! engine.getCore().areOutputsMuted()); };
 
-    engine.onDeviceChanged = [this] { rebuildGraph(); };
+    controller.onDocumentChanged = [this] { setModified (true); };
+    session.getUndoManager().addChangeListener (this);
+    engine.onDeviceChanged = [this] { canvas.repaint(); };
 
-    rebuildGraph();
-    countersSince = lastTick = juce::Time::getMillisecondCounterHiRes() / 1000.0;
-    startTimerHz (30);
-    setSize (1100, 640);
+    // Reopen the last session, or start with the default mix.
+    const auto last = juce::File (settings.getValue ("lastSession"));
+    if (! (last.existsAsFile() && loadFile (last, true)))
+        startWithDefaultSession();
+
+    setWantsKeyboardFocus (false);
+    setSize (1280, 800);
+    startTimerHz (4);
+    updateButtons();
+
+    juce::MessageManager::callAsync ([safe = juce::Component::SafePointer (this)]
+    {
+        if (safe != nullptr)
+        {
+            safe->canvas.fitAll();
+            safe->canvas.grabKeyboardFocus();
+        }
+    });
 }
 
 MainComponent::~MainComponent()
 {
     engine.onDeviceChanged = nullptr;
+    session.getUndoManager().removeChangeListener (this);
 }
 
-void MainComponent::rebuildGraph()
+void MainComponent::saveSettings()
 {
-    const auto status = engine.getStatus();
-    numInputs = std::min (status.numInputs, 64);
-    numOutputs = std::min (status.numOutputs, 64);
-
-    // Every input → its own meter strip and a centred pan into a stereo bus; the bus goes
-    // through a fader to outputs 1-2. A test tone can be added to the bus.
-    graph::GraphDesc d;
-    graph::WireId wire = 1;
-
-    d.nodes.push_back (makeNode (busId, types::bus, { 0, 0, 2 }));
-    d.nodes.push_back (makeNode (faderId, types::fader, { (float) monitorLevel.getValue(), monitorToggle.getToggleState() ? 0.0f : 1.0f, 2 }));
-    d.nodes.push_back (makeNode (toneId, types::testGenerator, { 0, 1000, -18, toneToggle.getToggleState() ? 1.0f : 0.0f, 1 }));
-    d.wires.push_back ({ wire++, busId, 0, faderId, 0, 1.0f });
-    d.wires.push_back ({ wire++, toneId, 0, busId, 0, 1.0f });
-
-    if (numOutputs > 0)
-    {
-        d.nodes.push_back (makeNode (mainOutId, types::hardwareOutput, { 1, (float) std::min (2, numOutputs) }));
-        d.wires.push_back ({ wire++, faderId, 0, mainOutId, 0, 1.0f });
-    }
-
-    for (int ch = 0; ch < numInputs; ++ch)
-    {
-        const auto in = inputBase + (graph::NodeId) ch, pan = panBase + (graph::NodeId) ch;
-        d.nodes.push_back (makeNode (in, types::hardwareInput, { (float) ch + 1, 1 }));
-        d.nodes.push_back (makeNode (pan, types::pan, { 0, 1 }));
-        d.wires.push_back ({ wire++, in, 0, pan, 0, 1.0f });
-        d.wires.push_back ({ wire++, pan, 0, busId, 0, 1.0f });
-    }
-
-    // The main output node's input meter shows outputs 1-2; other outputs are silent.
-    engine.setGraph (d);
-
-    strips.clear();
-
-    auto addStrip = [this] (juce::String name, graph::NodeId node, int channel, bool isOutput)
-    {
-        Strip s;
-        s.label = std::make_unique<juce::Label> (juce::String(), name);
-        styleLabel (*s.label, 12.0f, ui::theme::textMuted);
-        s.label->setJustificationType (juce::Justification::centred);
-        s.meter = std::make_unique<ui::LevelMeter>();
-        s.node = node;
-        s.channel = channel;
-        s.isOutput = isOutput;
-        addAndMakeVisible (*s.label);
-        addAndMakeVisible (*s.meter);
-        strips.push_back (std::move (s));
-    };
-
-    for (int ch = 0; ch < numInputs; ++ch)
-        addStrip (juce::String (ch + 1), inputBase + (graph::NodeId) ch, 0, false);
-
-    for (int ch = 0; ch < std::min (2, numOutputs); ++ch)
-        addStrip (juce::String (ch + 1), mainOutId, ch, true);
-
-    resized();
+    settings.setValue ("showMinimap", canvas.isMinimapVisible());
+    settings.setValue ("lastSession", currentFile.getFullPathName());
 }
 
-void MainComponent::pushParameters()
+void MainComponent::selectNodeNamed (const juce::String& name)
 {
-    auto& builder = engine.getBuilder();
-    builder.setParameter (faderId, 0, (float) monitorLevel.getValue());
-    builder.setParameter (faderId, 1, monitorToggle.getToggleState() ? 0.0f : 1.0f);
-    builder.setParameter (toneId, 3, toneToggle.getToggleState() ? 1.0f : 0.0f);
+    for (auto id : session.getNodeIds())
+        if (session.getNodeName (id) == name)
+            selection.selectOnly (id);
+}
+
+//==============================================================================
+juce::File MainComponent::sessionsFolder()
+{
+    auto folder = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("StagePlotMixer").getChildFile ("Sessions");
+    folder.createDirectory();
+    return folder;
+}
+
+void MainComponent::startWithDefaultSession()
+{
+    const auto inputs = engine.getStatus().numInputs;
+    session.clear();
+    model::createDefaultSession (session, inputs > 0 ? inputs : 2);
+    selection.clear();
+    currentFile = juce::File();
+    controller.rebuild();
+    setModified (false);
+}
+
+void MainComponent::newSession()
+{
+    confirmDiscard ([this]
+    {
+        startWithDefaultSession();
+        canvas.fitAll();
+    });
+}
+
+void MainComponent::openSession()
+{
+    confirmDiscard ([this]
+    {
+        chooser = std::make_unique<juce::FileChooser> ("Open session", currentFile.existsAsFile() ? currentFile : sessionsFolder(),
+                                                       "*" + fileExtension);
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                              [this] (const juce::FileChooser& fc)
+                              {
+                                  if (fc.getResult() != juce::File())
+                                      loadFile (fc.getResult(), false);
+                              });
+    });
+}
+
+bool MainComponent::loadFile (const juce::File& file, bool quiet)
+{
+    const auto error = session.loadJson (file.loadFileAsString());
+
+    if (error.isNotEmpty())
+    {
+        if (! quiet)
+            showError ("Couldn't open " + file.getFileName(), error);
+        return false;
+    }
+
+    selection.clear();
+    currentFile = file;
+    controller.rebuild();
+    setModified (false);
+    settings.setValue ("lastSession", file.getFullPathName());
+    canvas.fitAll();
+    return true;
+}
+
+void MainComponent::save (std::function<void (bool)> done)
+{
+    if (currentFile == juce::File())
+    {
+        saveAs (std::move (done));
+        return;
+    }
+
+    const auto ok = writeTo (currentFile);
+    if (done)
+        done (ok);
+}
+
+void MainComponent::saveAs (std::function<void (bool)> done)
+{
+    const auto suggested = currentFile != juce::File() ? currentFile : sessionsFolder().getChildFile ("Untitled" + fileExtension);
+    chooser = std::make_unique<juce::FileChooser> ("Save session", suggested, "*" + fileExtension);
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                              | juce::FileBrowserComponent::warnAboutOverwriting,
+                          [this, done] (const juce::FileChooser& fc)
+                          {
+                              auto file = fc.getResult();
+                              auto ok = false;
+                              if (file != juce::File())
+                                  ok = writeTo (file.withFileExtension (fileExtension));
+                              if (done)
+                                  done (ok);
+                          });
+}
+
+bool MainComponent::writeTo (const juce::File& file)
+{
+    // Write to a temporary file first so a failed save can't damage the old one.
+    juce::TemporaryFile temp (file);
+    if (! temp.getFile().replaceWithText (session.toJson()) || ! temp.overwriteTargetFileWithTemporary())
+    {
+        showError ("Couldn't save", "The session couldn't be written to " + file.getFullPathName()
+                                        + ". Check the folder exists and isn't read-only.");
+        return false;
+    }
+
+    currentFile = file;
+    setModified (false);
+    settings.setValue ("lastSession", file.getFullPathName());
+    return true;
+}
+
+void MainComponent::confirmDiscard (std::function<void()> then)
+{
+    if (! modified)
+    {
+        then();
+        return;
+    }
+
+    const auto name = currentFile != juce::File() ? currentFile.getFileNameWithoutExtension() : juce::String ("Untitled");
+    auto options = juce::MessageBoxOptions::makeOptionsYesNoCancel (juce::MessageBoxIconType::QuestionIcon, "Save changes?",
+                                                                    "Do you want to save the changes to \"" + name + "\"?",
+                                                                    "Save", "Don't Save", "Cancel", this);
+
+    juce::AlertWindow::showAsync (options, [safe = juce::Component::SafePointer (this), then] (int result)
+    {
+        if (safe == nullptr)
+            return;
+
+        if (result == 1)
+            safe->save ([then] (bool saved) { if (saved) then(); });
+        else if (result == 2)
+            then();
+    });
+}
+
+void MainComponent::showError (const juce::String& title, const juce::String& message)
+{
+    juce::AlertWindow::showAsync (juce::MessageBoxOptions()
+                                      .withIconType (juce::MessageBoxIconType::WarningIcon)
+                                      .withTitle (title)
+                                      .withMessage (message)
+                                      .withButton ("OK")
+                                      .withAssociatedComponent (this),
+                                  nullptr);
+}
+
+void MainComponent::setModified (bool shouldBeModified)
+{
+    if (modified != shouldBeModified)
+    {
+        modified = shouldBeModified;
+        updateTitle();
+    }
+    updateButtons();
+}
+
+void MainComponent::updateTitle()
+{
+    const auto name = currentFile != juce::File() ? currentFile.getFileNameWithoutExtension() : juce::String ("Untitled");
+
+    if (auto* window = findParentComponentOfClass<juce::DocumentWindow>())
+        window->setName (name + (modified ? " *" : "") + juce::String::fromUTF8 (" \xe2\x80\x94 Stage Plot Mixer"));
+
+    repaint (0, 0, getWidth(), toolbarHeight);
+}
+
+void MainComponent::updateButtons()
+{
+    auto& undo = session.getUndoManager();
+    undoButton.setEnabled (undo.canUndo());
+    redoButton.setEnabled (undo.canRedo());
+    undoButton.setTooltip (undo.canUndo() ? "Undo " + undo.getUndoDescription() + " (Ctrl+Z)" : "Nothing to undo");
+    redoButton.setTooltip (undo.canRedo() ? "Redo " + undo.getRedoDescription() + " (Ctrl+Shift+Z)" : "Nothing to redo");
+}
+
+void MainComponent::changeListenerCallback (juce::ChangeBroadcaster*)
+{
+    updateButtons();
 }
 
 void MainComponent::timerCallback()
 {
-    const auto now = juce::Time::getMillisecondCounterHiRes() / 1000.0;
-    const auto elapsed = now - lastTick;
-    lastTick = now;
-
-    auto& builder = engine.getBuilder();
-
-    for (auto& s : strips)
-    {
-        engine::MeterChannel* channel = nullptr;
-
-        if (auto* processor = builder.getProcessor (s.node))
-        {
-            auto& meter = s.isOutput ? processor->getInputMeter (0) : processor->getOutputMeter (0);
-            if (s.channel < meter.getNumChannels())
-                channel = &meter.channel (s.channel);
-        }
-
-        s.meter->update (channel, elapsed);
-    }
-
-    // Status bar, about 4 times a second.
-    static int divider = 0;
-    if (++divider % 8 != 0)
-        return;
-
-    const auto st = engine.getStatus();
-    peakCpu = std::max (peakCpu, st.stats.peakCpuLoad);
-
-    if (st.deviceName.isEmpty())
-        statusDevice.setText ("No audio device - choose one in Audio settings", juce::dontSendNotification);
-    else
-        statusDevice.setText (st.deviceName + "  (" + st.typeName + ")" + (st.running ? "" : "  - stopped"),
-                              juce::dontSendNotification);
-
-    const auto ms = [&st] (int samples) { return st.sampleRate > 0 ? 1000.0 * samples / st.sampleRate : 0.0; };
-    statusFormat.setText (juce::String (st.sampleRate / 1000.0, 1) + " kHz   " + juce::String (st.bufferSize) + " samples ("
-                              + juce::String (ms (st.bufferSize), 1) + " ms)   " + juce::String (st.numInputs) + " in / "
-                              + juce::String (st.numOutputs) + " out",
-                          juce::dontSendNotification);
-    statusCpu.setText ("CPU " + juce::String (juce::roundToInt (st.stats.cpuLoad * 100.0f)) + "%  (peak "
-                           + juce::String (juce::roundToInt (peakCpu * 100.0f)) + "%)",
-                       juce::dontSendNotification);
-
-    const auto minutes = (now - countersSince) / 60.0;
-    auto counters = "Late " + juce::String (st.stats.lateCallbacks) + "   Overloads " + juce::String (st.stats.overloads);
-    if (st.driverXruns >= 0)
-        counters << "   Driver dropouts " << st.driverXruns;
-    counters << "   (" << juce::String (minutes, 1) << " min)";
-    statusCounters.setText (counters, juce::dontSendNotification);
-
-    const auto problems = st.stats.lateCallbacks + st.stats.overloads + std::max (0, st.driverXruns);
-    statusCounters.setColour (juce::Label::textColourId, problems > 0 ? ui::theme::warning : ui::theme::textMuted);
-
     const auto muted = engine.getCore().areOutputsMuted();
-    muteButton.setButtonText (muted ? "Unmute outputs" : "Mute outputs");
-    muteButton.setColour (juce::TextButton::buttonColourId, muted ? ui::theme::danger.darker (0.3f) : ui::theme::surfaceHigh);
+    if (muted != lastMuted)
+    {
+        lastMuted = muted;
+        muteButton.setIcon (muted ? "volume-x" : "volume-2");
+        muteButton.setLabel (muted ? "Outputs muted" : "Outputs on");
+        muteButton.setHighlightColour (muted ? std::optional (ui::theme::danger) : std::nullopt);
+        resized();
+    }
 }
 
-void MainComponent::paint (juce::Graphics& g)
+juce::StringArray MainComponent::deviceChannelNames (bool inputs) const
 {
-    g.fillAll (ui::theme::background);
+    juce::StringArray result;
+    auto* device = engine.getDeviceManager().getCurrentAudioDevice();
+    if (device == nullptr)
+        return result;
 
-    g.setColour (ui::theme::surface);
-    g.fillRect (getLocalBounds().removeFromBottom (64));
-    g.setColour (ui::theme::border);
-    g.fillRect (0, getHeight() - 64, getWidth(), 1);
-}
-
-void MainComponent::resized()
-{
-    auto area = getLocalBounds().reduced (16, 0);
-
-    // Status bar.
-    auto status = getLocalBounds().removeFromBottom (64).reduced (16, 8);
-    auto buttons = status.removeFromRight (520);
-    for (auto* b : { &muteButton, &reportButton, &resetButton, &settingsButton })
-    {
-        b->setBounds (buttons.removeFromRight (122).reduced (4, 8));
-    }
-    auto top = status.removeFromTop (status.getHeight() / 2);
-    statusDevice.setBounds (top.removeFromLeft (top.getWidth() / 2));
-    statusFormat.setBounds (top);
-    statusCpu.setBounds (status.removeFromLeft (160));
-    statusCounters.setBounds (status);
-
-    area.removeFromBottom (64);
-    area.removeFromTop (12);
-    title.setBounds (area.removeFromTop (32));
-    area.removeFromTop (8);
-
-    auto controls = area.removeFromTop (32);
-    monitorToggle.setBounds (controls.removeFromLeft (280));
-    toneToggle.setBounds (controls.removeFromLeft (180));
-    monitorLevelLabel.setBounds (controls.removeFromLeft (110));
-    monitorLevel.setBounds (controls.removeFromLeft (320));
-    area.removeFromTop (16);
-
-    auto headings = area.removeFromTop (24);
-    const auto stripWidth = 28;
-    const auto inputsWidth = std::max (80, numInputs * stripWidth);
-    inputsHeading.setBounds (headings.removeFromLeft (inputsWidth));
-    headings.removeFromLeft (32);
-    outputsHeading.setBounds (headings);
-
-    auto meters = area.reduced (0, 8);
-    auto x = meters.getX();
-
-    for (auto& s : strips)
-    {
-        if (s.isOutput && ! strips.empty() && &s == &*std::find_if (strips.begin(), strips.end(), [] (auto& t) { return t.isOutput; }))
-            x = meters.getX() + inputsWidth + 32;
-
-        auto column = juce::Rectangle<int> (x, meters.getY(), stripWidth, meters.getHeight());
-        s.label->setBounds (column.removeFromBottom (18));
-        s.meter->setBounds (column.reduced (6, 0));
-        x += stripWidth;
-    }
+    // The engine sees only the enabled channels, in order.
+    const auto names = inputs ? device->getInputChannelNames() : device->getOutputChannelNames();
+    const auto active = inputs ? device->getActiveInputChannels() : device->getActiveOutputChannels();
+    for (int i = 0; i < names.size(); ++i)
+        if (active[i])
+            result.add (names[i]);
+    return result;
 }
 
 void MainComponent::showAudioSettings()
@@ -298,41 +314,75 @@ void MainComponent::showAudioSettings()
     options.launchAsync();
 }
 
-juce::String MainComponent::makeReport()
+//==============================================================================
+bool MainComponent::keyPressed (const juce::KeyPress& key)
 {
-    const auto st = engine.getStatus();
-    const auto minutes = (juce::Time::getMillisecondCounterHiRes() / 1000.0 - countersSince) / 60.0;
+    const auto mods = key.getModifiers();
+    if (! mods.isCommandDown())
+        return false;
 
-    juce::String r;
-    r << "Stage Plot Mixer engine test  [" << SPM_GIT_HASH << "]\n"
-      << "Date:        " << juce::Time::getCurrentTime().toString (true, true) << "\n"
-      << "Device:      " << st.deviceName << " (" << st.typeName << ")" << (st.running ? "" : " - STOPPED") << "\n"
-      << "Format:      " << st.sampleRate << " Hz, " << st.bufferSize << " samples, " << st.numInputs << " in / "
-      << st.numOutputs << " out\n"
-      << "Latency:     in " << st.inputLatency << ", out " << st.outputLatency << " samples (driver-reported)\n"
-      << "Duration:    " << juce::String (minutes, 1) << " minutes since counters were reset\n"
-      << "Callbacks:   " << st.stats.callbacks << "\n"
-      << "Late:        " << st.stats.lateCallbacks << "\n"
-      << "Overloads:   " << st.stats.overloads << "\n"
-      << "Driver dropouts: " << (st.driverXruns >= 0 ? juce::String (st.driverXruns) : juce::String ("not reported")) << "\n"
-      << "CPU:         " << juce::roundToInt (st.stats.cpuLoad * 100.0f) << "% now, " << juce::roundToInt (peakCpu * 100.0f)
-      << "% peak\n";
+    const auto code = key.getKeyCode();
+    auto& undo = session.getUndoManager();
 
-    const auto problems = st.stats.lateCallbacks + st.stats.overloads + std::max (0, st.driverXruns);
-    r << "Verdict:     " << (! st.running ? "FAIL (device stopped)" : problems > 0 ? "CHECK (see counts above)" : "PASS") << "\n";
-    return r;
+    if (code == 'Z' && mods.isShiftDown()) { undo.redo(); return true; }
+    if (code == 'Z')                       { undo.undo(); return true; }
+    if (code == 'Y')                       { undo.redo(); return true; }
+    if (code == 'S' && mods.isShiftDown()) { saveAs(); return true; }
+    if (code == 'S')                       { save(); return true; }
+    if (code == 'O')                       { openSession(); return true; }
+    if (code == 'N')                       { newSession(); return true; }
+    if (code == 'M')                       { muteButton.triggerClick(); return true; }
+    return false;
 }
 
-void MainComponent::copyReport()
+void MainComponent::paint (juce::Graphics& g)
 {
-    const auto report = makeReport();
-    juce::SystemClipboard::copyTextToClipboard (report);
-    reportButton.setButtonText ("Copied");
-    juce::Timer::callAfterDelay (1500, [safe = juce::Component::SafePointer (this)]
+    g.fillAll (ui::theme::background);
+
+    auto bar = getLocalBounds().removeFromTop (toolbarHeight);
+    g.setColour (ui::theme::surface);
+    g.fillRect (bar);
+    g.setColour (ui::theme::border);
+    g.fillRect (bar.removeFromBottom (1));
+
+    // Separators between button groups.
+    for (auto* b : { &saveAsButton, &redoButton })
+        g.fillRect (b->getRight() + 8, 12, 1, toolbarHeight - 24);
+
+    // Session name, centred in the space between the groups.
+    const auto name = currentFile != juce::File() ? currentFile.getFileNameWithoutExtension() : juce::String ("Untitled");
+    auto area = juce::Rectangle<int>::leftTopRightBottom (addButton.getRight() + 16, 0, muteButton.getX() - 16, toolbarHeight);
+    g.setFont (ui::theme::font (13.0f, ui::theme::Weight::semiBold));
+    g.setColour (ui::theme::text);
+    g.drawText (name + (modified ? " *" : ""), area, juce::Justification::centred, true);
+}
+
+void MainComponent::resized()
+{
+    auto area = getLocalBounds();
+    auto bar = area.removeFromTop (toolbarHeight).reduced (8, 7);
+
+    auto place = [&bar] (ui::IconButton& b, bool fromRight = false)
     {
-        if (safe != nullptr)
-            safe->reportButton.setButtonText ("Copy report");
-    });
+        const auto w = b.getIdealWidth (bar.getHeight());
+        b.setBounds (fromRight ? bar.removeFromRight (w) : bar.removeFromLeft (w));
+        if (fromRight) bar.removeFromRight (4); else bar.removeFromLeft (4);
+    };
+
+    for (auto* b : { &newButton, &openButton, &saveButton, &saveAsButton })
+        place (*b);
+    bar.removeFromLeft (13);
+    place (undoButton);
+    place (redoButton);
+    bar.removeFromLeft (13);
+    place (addButton);
+
+    place (settingsButton, true);
+    place (muteButton, true);
+
+    statusBar.setBounds (area.removeFromBottom (StatusBar::height));
+    inspector.setBounds (area.removeFromRight (ui::Inspector::preferredWidth));
+    canvas.setBounds (area);
 }
 
 } // namespace spm::app

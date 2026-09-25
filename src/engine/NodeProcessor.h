@@ -135,7 +135,7 @@ public:
 
         smoother.setTarget (target);
 
-        const auto silent = ! smoother.isRamping() && smoother.getCurrent() == 0.0f;
+        const auto silent = ! smoother.isRamping() && ! (smoother.getCurrent() > 0.0f || smoother.getCurrent() < 0.0f);
 
         if (silent && ! connected.load (std::memory_order_relaxed))
             faded.store (true, std::memory_order_release);
