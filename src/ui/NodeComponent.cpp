@@ -16,6 +16,8 @@ namespace
 constexpr int margin = 8;           // room outside the body for the port dots
 constexpr float portRadius = 5.0f;
 constexpr int sliderHeight = 24, toggleRowHeight = 26, groupInfoHeight = 24;
+constexpr int reductionHeight = 6, reductionGap = 4;
+constexpr float reductionRangeDb = 24.0f;
 
 juce::String describeChannels (int channels)
 {
@@ -337,6 +339,8 @@ void NodeComponent::rebuildControls()
         height += toggleRowHeight;
     if (type->id == nodes::types::group)
         height += groupInfoHeight;
+    if (showsGainReduction())
+        height += reductionHeight + reductionGap;
     height += meterHeight() + 10;
 
     setSize (width + 2 * margin, height);
@@ -414,6 +418,18 @@ int NodeComponent::meterHeight() const noexcept
 juce::Rectangle<int> NodeComponent::meterArea() const
 {
     return { margin + 10, getHeight() - 8 - meterHeight(), width - 20, meterHeight() };
+}
+
+bool NodeComponent::showsGainReduction() const noexcept
+{
+    return type != nullptr && (type->id == nodes::types::compressor || type->id == nodes::types::limiter
+                               || type->id == nodes::types::gate);
+}
+
+juce::Rectangle<int> NodeComponent::gainReductionArea() const
+{
+    const auto meter = meterArea();
+    return { meter.getX(), meter.getY() - reductionGap - reductionHeight, meter.getWidth(), reductionHeight };
 }
 
 void NodeComponent::resized()
@@ -516,6 +532,39 @@ void NodeComponent::updateMeter()
         lastMeterStep = step;
         repaint (meterArea().expanded (2));
     }
+
+    if (showsGainReduction())
+    {
+        const auto reduction = juce::roundToInt (canvas.getMeters().getGainReduction (id).value_or (0.0f) * 4.0f);
+        if (reduction != lastReductionStep)
+        {
+            lastReductionStep = reduction;
+            repaint (gainReductionArea().expanded (2));
+        }
+    }
+
+    // Latency is fixed per processor, but the processor appears after the first build.
+    if (const auto l = canvas.getNodeLatency (id); l != latency)
+    {
+        latency = l;
+        repaint (0, 0, getWidth(), headerHeight);
+    }
+}
+
+void NodeComponent::paintGainReduction (juce::Graphics& g, juce::Rectangle<float> area)
+{
+    // Grows leftwards from the right edge: 0 to 24 dB of reduction.
+    const auto db = canvas.getMeters().getGainReduction (id).value_or (0.0f);
+    g.setColour (theme::background);
+    g.fillRect (area);
+
+    const auto amount = juce::jlimit (0.0f, 1.0f, db / reductionRangeDb);
+    g.setColour (theme::warning);
+    g.fillRect (area.withLeft (area.getRight() - area.getWidth() * amount));
+
+    g.setColour (theme::text.withAlpha (0.25f));
+    for (auto tick : { 6.0f, 12.0f, 18.0f })
+        g.fillRect (area.getRight() - area.getWidth() * tick / reductionRangeDb, area.getY(), 1.0f, area.getHeight());
 }
 
 void NodeComponent::paintMeter (juce::Graphics& g, juce::Rectangle<float> area)
@@ -590,13 +639,28 @@ void NodeComponent::paint (juce::Graphics& g)
         if (type != nullptr)
             drawIcon (g, type->icon, { body.getX() + 9.0f, 9.0f, 15.0f, 15.0f }, colour);
 
+        auto nameArea = juce::Rectangle<float> (body.getX() + 31.0f, 3.0f, body.getWidth() - 39.0f, (float) headerHeight - 3.0f);
+
+        if (latency > 0)
+        {
+            // Latency badge: this node delays its signal (and parallel paths are delayed to match).
+            const auto text = juce::String (latency) + " smp";
+            const auto font = theme::font (10.0f, theme::Weight::semiBold);
+            const auto badgeWidth = juce::GlyphArrangement::getStringWidth (font, text) + 10.0f;
+            const auto badge = nameArea.removeFromRight (badgeWidth).withSizeKeepingCentre (badgeWidth, 16.0f);
+            nameArea.removeFromRight (4.0f);
+            g.setColour (theme::background.withAlpha (0.7f));
+            g.fillRoundedRectangle (badge, 8.0f);
+            g.setColour (theme::textMuted);
+            g.setFont (font);
+            g.drawText (text, badge, juce::Justification::centred, false);
+        }
+
         if (renameEditor == nullptr)
         {
             g.setColour (theme::text);
             g.setFont (theme::font (13.0f, theme::Weight::semiBold));
-            g.drawText (type != nullptr ? name : name + " (unknown type)",
-                        juce::Rectangle<float> (body.getX() + 31.0f, 3.0f, body.getWidth() - 39.0f, (float) headerHeight - 3.0f),
-                        juce::Justification::centredLeft, true);
+            g.drawText (type != nullptr ? name : name + " (unknown type)", nameArea, juce::Justification::centredLeft, true);
         }
     }
 
@@ -665,6 +729,9 @@ void NodeComponent::paint (juce::Graphics& g)
         g.drawText (juce::String (count) + (count == 1 ? " node inside" : " nodes inside") + juce::String::fromUTF8 (" \xc2\xb7 double-click to open"),
                     info, juce::Justification::centredLeft, true);
     }
+
+    if (showsGainReduction())
+        paintGainReduction (g, gainReductionArea().toFloat());
 
     paintMeter (g, meterArea().toFloat());
 }
@@ -737,7 +804,15 @@ juce::String NodeComponent::getTooltip()
     }
 
     if (type != nullptr && lastMouse.y < (float) headerHeight)
-        return juce::String (type->name) + ": " + type->description + " Double-click to rename.";
+    {
+        auto text = juce::String (type->name) + ": " + type->description + " Double-click to rename.";
+        if (latency > 0)
+            text << " Delays its signal by " << latency << " samples; other paths are delayed to match.";
+        return text;
+    }
+
+    if (showsGainReduction() && gainReductionArea().expanded (0, 2).contains (lastMouse.toInt()))
+        return "Gain reduction: how much it's turning the signal down right now (up to 24 dB, ticks every 6 dB).";
 
     if (type != nullptr && type->id == nodes::types::group)
         return "Double-click to open this group and see what's inside.";

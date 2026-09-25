@@ -21,6 +21,7 @@ float PortLevels::maxPeakDb() const noexcept
 void MeterCache::poll (graph::GraphBuilder& builder, const juce::Array<graph::NodeId>& nodes, double elapsed)
 {
     std::map<std::tuple<graph::NodeId, bool, int>, PortLevels> next;
+    std::map<graph::NodeId, float> nextReduction;
     const auto fall = (float) (24.0 * elapsed);
 
     for (auto id : nodes)
@@ -55,15 +56,29 @@ void MeterCache::poll (graph::GraphBuilder& builder, const juce::Array<graph::No
 
         for (int p = 0; p < processor->getNumOutputPorts(); ++p)
             readPort (false, p, processor->getOutputMeter (p));
+
+        if (processor->hasGainReduction())
+        {
+            const auto previous = reduction.find (id);
+            const auto old = previous != reduction.end() ? previous->second : 0.0f;
+            nextReduction[id] = std::max (processor->takeGainReductionDb(), old - fall);
+        }
     }
 
     levels = std::move (next);
+    reduction = std::move (nextReduction);
 }
 
 const PortLevels* MeterCache::get (graph::NodeId node, bool input, int port) const
 {
     const auto it = levels.find (std::make_tuple (node, input, port));
     return it != levels.end() ? &it->second : nullptr;
+}
+
+std::optional<float> MeterCache::getGainReduction (graph::NodeId node) const
+{
+    const auto it = reduction.find (node);
+    return it != reduction.end() ? std::optional<float> (it->second) : std::nullopt;
 }
 
 void MeterCache::alias (graph::NodeId node, bool input, int port, graph::NodeId fromNode, bool fromInput, int fromPort)

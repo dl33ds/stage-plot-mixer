@@ -1,6 +1,7 @@
 add_executable(spm_tests
     CallbackStatsTests.cpp
     DelayFinderTests.cpp
+    EffectTests.cpp
     EngineTests.cpp
     GraphTests.cpp
     NodeTests.cpp

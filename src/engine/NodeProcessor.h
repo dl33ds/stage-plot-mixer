@@ -81,8 +81,16 @@ public:
     /** Clears internal state. Called while audio is stopped (device restart). */
     virtual void reset() noexcept {}
 
-    /** Samples of delay this node adds (for path delay compensation, later). */
+    /** Samples of delay this node adds; the graph delays parallel paths to match (PDC).
+        Must not change while the processor exists.
+    */
     virtual int getLatencySamples() const noexcept { return 0; }
+
+    /** Dynamics nodes: whether this node reports gain reduction. */
+    virtual bool hasGainReduction() const noexcept { return false; }
+
+    /** Message thread: the most gain reduction (dB, 0 or more) since the last call. */
+    float takeGainReductionDb() noexcept { return gainReduction.exchange (0.0f, std::memory_order_relaxed); }
 
     PortMeter& getInputMeter (int port) noexcept { return *inputMeters[(size_t) port]; }
     PortMeter& getOutputMeter (int port) noexcept { return *outputMeters[(size_t) port]; }
@@ -90,11 +98,19 @@ public:
 protected:
     float param (int index) const noexcept { return getParameter (index); }
 
+    /** Audio thread: records this block's gain reduction, keeping the largest until it's read. */
+    void reportGainReduction (float db) noexcept
+    {
+        auto current = gainReduction.load (std::memory_order_relaxed);
+        while (db > current && ! gainReduction.compare_exchange_weak (current, db, std::memory_order_relaxed)) {}
+    }
+
 private:
     std::vector<int> inputChannels, outputChannels;
     std::unique_ptr<std::atomic<float>[]> params;
     int numParams = 0;
     std::vector<std::unique_ptr<PortMeter>> inputMeters, outputMeters;
+    std::atomic<float> gainReduction { 0.0f };
 };
 
 /** Persistent state of one wire, shared between compiled graphs.
@@ -106,6 +122,59 @@ class WireState
 {
 public:
     explicit WireState (float initialGain = 1.0f) : gain (initialGain) {}
+
+    /** A wire that delays its signal by delaySamples, to line it up with a parallel path
+        that has more latency (PDC). Allocates here, on the message thread.
+    */
+    WireState (float initialGain, int delaySamples, int numChannels, int maxBlockSize)
+        : gain (initialGain),
+          delay (std::max (0, delaySamples)),
+          ringSize (delay + std::max (1, maxBlockSize)),
+          ring (delay > 0 ? (size_t) std::max (0, numChannels) * (size_t) ringSize : 0, 0.0f),
+          delayed (delay > 0 ? numChannels : 0, delay > 0 ? maxBlockSize : 0)
+    {
+    }
+
+    int getDelaySamples() const noexcept { return delay; }
+
+    /** Audio thread, once per block, whether or not the wire is audible: passes the
+        source through the delay line and returns the delayed block.
+    */
+    ChannelSpan delayBlock (const ChannelSpan& source) noexcept
+    {
+        const auto out = delayed.span (source.numSamples);
+        const auto channels = std::min (source.numChannels, out.numChannels);
+        const auto n = out.numSamples;
+
+        for (int ch = 0; ch < channels; ++ch)
+        {
+            auto* line = ring.data() + (size_t) ch * (size_t) ringSize;
+            const auto* src = source.channel (ch);
+            auto* dst = out.channel (ch);
+
+            auto w = writePos;
+            for (int i = 0; i < n; ++i)
+            {
+                line[w] = src[i];
+                if (++w == ringSize)
+                    w = 0;
+            }
+
+            auto r = writePos - delay;
+            if (r < 0)
+                r += ringSize;
+
+            for (int i = 0; i < n; ++i)
+            {
+                dst[i] = line[r];
+                if (++r == ringSize)
+                    r = 0;
+            }
+        }
+
+        writePos = (writePos + n) % ringSize;
+        return { out.channels, channels, n };
+    }
 
     /** Message thread. */
     void setGain (float linearGain) noexcept { gain.store (linearGain, std::memory_order_relaxed); }
@@ -157,6 +226,11 @@ private:
     // Audio thread only.
     Smoother smoother;
     bool started = false;
+
+    // Path delay compensation (fixed for the life of the wire).
+    int delay = 0, ringSize = 1, writePos = 0;
+    std::vector<float> ring;
+    ChannelBuffer delayed { 0, 0 };
 };
 
 } // namespace spm::engine

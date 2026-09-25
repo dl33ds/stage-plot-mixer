@@ -50,6 +50,7 @@ public:
         it (for development snapshots).
     */
     void addDemoPanel();
+    void addDemoEffects();
 
     void paint (juce::Graphics&) override;
     void resized() override;

@@ -256,6 +256,8 @@ MainComponent::MainComponent (AudioEngine& e, juce::PropertiesFile& s) : engine 
 
     canvas.getDeviceChannelNames = inspector.getDeviceChannelNames = [this] (bool inputs) { return deviceChannelNames (inputs); };
     inspector.onDelete = [this] { canvas.deleteSelection(); };
+    inspector.getNodeLatency = [this] (graph::NodeId node) { return canvas.getNodeLatency (node); };
+    inspector.getWireDelay = [this] (graph::WireId wire) { return engine.getBuilder().getWireDelay (wire); };
     inspector.onDuplicate = [this] { canvas.duplicateSelection(); };
     canvas.setMinimapVisible (settings.getBoolValue ("showMinimap", true));
 
@@ -326,6 +328,32 @@ void MainComponent::addRecorderAfter (const juce::String& name)
             session.addWire (id, 0, recorder, 0);
             setModified (false);
         }
+}
+
+void MainComponent::addDemoEffects()
+{
+    // For snapshots: one of each effect, fed from the first input, below everything else.
+    graph::NodeId source = 0;
+    auto bottom = 0.0f;
+    for (auto id : session.getNodeIds())
+    {
+        bottom = std::max (bottom, session.getNodePosition (id).y);
+        if (source == 0 && session.getNodeType (id) != nullptr && session.getNodeType (id)->id == nodes::types::hardwareInput)
+            source = id;
+    }
+
+    auto x = 0.0f;
+    for (auto type : { nodes::types::filter, nodes::types::eq, nodes::types::compressor, nodes::types::limiter,
+                       nodes::types::gate, nodes::types::delay, nodes::types::reverb })
+    {
+        const auto id = session.addNode (type, { x, bottom + 320.0f });
+        if (source != 0)
+            session.addWire (source, 0, id, 0);
+        x += 240.0f;
+    }
+
+    setModified (false);
+    canvas.fitAll();
 }
 
 //==============================================================================

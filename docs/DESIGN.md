@@ -2,7 +2,7 @@
 
 *A multi-channel real-time audio mixer & recorder*
 
-**Status:** v0.7 (requirements confirmed; Phases 2–3 in testing)
+**Status:** v0.9.1 (requirements confirmed; Phases 0–4 built; Phase 6 in progress)
 **Target platforms:** Windows 10 / 11 (x64) first; macOS and Linux later
 **License:** GNU AGPLv3 (see [§3.5](#35-licensing-open-source))
 **Repository:** <https://github.com/dl33ds/stage-plot-mixer>
@@ -202,7 +202,7 @@ The graph is the core of the app. **What you see in the editor is the signal flo
 #### Hierarchy
 - **Group nodes** contain a sub-graph. You **double-click to enter** a group, and a **breadcrumb bar** shows where you are (`Session › Drums › Kick`). The group's exposed ports appear as input/output pins on its boundary.
 - Select any nodes and choose **Group** (Ctrl+G) to make a group; the wires crossing the boundary become exposed ports automatically.
-- **Templates:** a group can be saved as a reusable template. The built-in **Channel Strip** is itself a template group (Trim → Inserts → EQ → Dynamics → Pan → Fader → Mute/Solo), so it can be opened and modified like any other group.
+- **Templates:** a group can be saved as a reusable template. The built-in **Channel Strip** is itself a template group (as built: Trim → Filter → EQ → Compressor → Fader → Pan), so it can be opened and modified like any other group.
 - The audio engine **flattens** the hierarchy when compiling, so groups cost no extra processing.
 
 #### Node library (v1)
@@ -221,6 +221,24 @@ The graph is the core of the app. **What you see in the editor is the signal flo
 - **Effects loops:** Send → effect → Return into a bus, internal or through outboard gear (External Insert).
 - **Cycles are blocked** (feedback loops). A deliberate Feedback node may be added later.
 - **PDC:** the compiler delays shorter parallel paths so all paths stay sample-aligned. Nodes that add latency show a small latency badge.
+  - *As built (6a):* the graph builder works out, for every node, the latency at which its signal arrives (the latest of its inputs) and leaves (plus its own latency). Each wire is delayed by the gap between where its signal leaves and where its destination's arrives. When that delay changes, the old wire fades out while a new one with the new delay fades in, so there's no click.
+  - Recorders are lined up with each other, so raw and processed tracks of a take match. Hardware outputs are not, because that would add latency to the live sound.
+  - A node's latency is fixed for the life of its processor. The Inspector shows a node's latency and any compensation delay on a wire.
+
+#### Built-in effects (as built, 6a)
+All effects run in 32-bit float, except that the filters keep their state in double precision so low frequencies stay clean. Parameter changes are smoothed. Bypass crossfades over 20 ms. Denormals are flushed to zero for the whole audio callback.
+
+| Node | Controls (inspector-only in *italics*) | Notes |
+|---|---|---|
+| Filter | High-pass on/freq, Low-pass on/freq, *Slope* 12/24 dB/oct, Bypass | Butterworth |
+| EQ | Low shelf, two bells, high shelf: gains on the face, *frequencies and Q* | RBJ biquads |
+| Compressor | Threshold, Ratio, *Attack, Release, Knee*, Makeup, Bypass | Peak, feed-forward, soft knee; channels linked |
+| Limiter | Input gain, Ceiling, *Release*, Bypass | 64-sample look-ahead: the output never goes over the ceiling |
+| Gate | Threshold, Range, *Attack, Hold, Release*, Bypass | 4 dB hysteresis; channels linked |
+| Delay | Time, Feedback, Mix | Up to 2 s; changing the time glides |
+| Reverb | Size, Damping, *Width*, Mix | Freeverb; mono or stereo in, stereo out |
+
+"Inspector-only" means they are left off panel faces; the node on the canvas shows every setting. Compressor, Limiter and Gate nodes show a gain-reduction bar (0–24 dB) above the level meter.
 - **Solo** follows the graph: soloing a node silences parallel sources feeding the same destinations.
 
 #### Editor ergonomics
@@ -435,13 +453,18 @@ Each phase ends with a working, demonstrable build.
 | **2** | Graph editor v1 | Design system (Inter, theme, icons), node canvas (pan/zoom/minimap), ports/bundles, wires, create/delete/connect, validation, undo/redo, save/load, atomic graph swap, built-in mixing/routing nodes | A 32-ch live mix (simulated device; Scarlett for audible checks) can be wired and changed during playback without clicks |
 | **3** | Recording | Recorder node, ring buffers, disk writer, BWF/RF64, mono files, take management, markers, pre-roll, disk-time display, crash recovery | 8-h soak test, 32 ch raw + processed, bit-exact raw files |
 | **4** | Hierarchy & faces | Group nodes, breadcrumb navigation, templates, channel-strip template, faces, tear-off windows, panels, face groups, layouts, Show Lock | A full "Show" layout survives save/restore and monitor changes |
-| **5** | Metering suite | All styles/scales/ballistics, peak-hold/clip, meter presets, LUFS/true-peak | All meter types configurable; 64 meters at 60 fps within budget |
 | **6** | Processing & plugins | Built-in effects, External Insert with latency ping, PDC, VST3 hosting, cross-platform LADSPA host with auto-generated faces, plugin scanner, **plugin sandbox** | Parallel paths stay sample-aligned; a crashing plugin doesn't stop audio or recording |
+| 6a | Built-in effects & PDC | HPF/LPF, 4-band EQ, Compressor, Limiter, Gate, Delay, Reverb; path delay compensation in the compiler; latency badges; EQ and dynamics in the Channel Strip | Parallel paths through different latencies stay sample-aligned |
+| 6b | External Insert | Send/return to outboard gear, latency ping measurement, feeds PDC | Measured loop latency is compensated to the sample |
+| 6c | VST3 hosting | Plugin scanner, VST3 node, plugin editor windows, state in the session, reported latency feeds PDC | Common free VST3s load, save and restore |
+| 6d | Plugin sandbox | Per-plugin out-of-process hosting; crash → pass-through or silence | A crashing plugin doesn't stop audio or recording |
+| 6e | LADSPA host | Cross-platform LADSPA loader with auto-generated faces | Common LADSPA plugins load and run on all platforms |
+| **5** | Metering suite | All styles/scales/ballistics, peak-hold/clip, meter presets, LUFS/true-peak | All meter types configurable; 64 meters at 60 fps within budget |
 | **7** | Polish & release (Windows) | First-run setup, tooltips/help, command palette, keyboard shortcuts, light theme, installer (Inno Setup or MSIX), code signing, crash reporter, user guide, hardware compatibility list | Clean install and a full live/studio session on the target PC |
 | **8** | Cross-platform | macOS build (signing/notarisation), Linux build (ALSA/JACK/PipeWire, FFADO check) | Feature parity where hardware allows |
 | **Later** | Extensions | Multi-device aggregation, VST2 (if cleared), LV2/CLAP, MIDI control surfaces, FLAC recording, spectrum analyzer, remote control; see also the backlog (§14) | — |
 
-Phase 5 is largely independent of 3–4 and can move earlier if needed.
+Phase 6 runs **before** Phase 5 (from v0.9): the plugin and PDC work carries the most risk, and nothing in it needs the metering suite. Phase 6 is built in the steps 6a–6e; each ends with a build the owner can test. Phase 5 is independent of 3, 4 and 6.
 
 ---
 
@@ -480,6 +503,8 @@ Phase 5 is largely independent of 3–4 and can move earlier if needed.
 ---
 
 ## 12. Change History
+- **v0.9.1**: Step 6a built: Filter, EQ, Compressor, Limiter, Gate, Delay and Reverb nodes; path delay compensation with click-free delay changes and recorder alignment; latency badges; gain-reduction bars; the Channel Strip gains Filter, EQ and Compressor (§5.1).
+- **v0.9**: Phase 6 (Processing & plugins) moved ahead of Phase 5 (Metering suite) and split into steps 6a–6e (§9). Until Phase 5, dynamics gain-reduction meters use the basic meter style.
 - **v0.8.1**: Slider feel. Every slider (node, face and Inspector) now follows the mouse 1:1 from where it is and never jumps to the click point; Shift+drag is fine control (1/10 speed); knobs take 200 px for a full turn. Inspector sliders show a hover state, and slider tooltips say how to drag.
 - **v0.8**: Phase 4 (Hierarchy & faces) built; see *As built* in §5.2. Session files are now version 2 (older files still open). The Channel Strip template is Trim → Fader → Pan until the EQ and dynamics nodes exist.
 - **v0.7**: Phase 3 (Recording) built; see *As built* in §5.4. Pre-roll choices are off/10/30/60 s rather than 30–120 s, to keep memory use modest on 32 channels.

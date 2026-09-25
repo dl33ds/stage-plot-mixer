@@ -158,6 +158,29 @@ This checks that a "show" setup, with groups, panels and windows on two screens,
 
 **What we're looking for:** anything that ends up off-screen, forgets where it was, changes the sound when grouping, or can be changed while Show Lock is on. Please send screenshots of anything odd along with the **Copy report** text.
 
+## 6d. Test G: Effects, about 20 minutes (Stage Plot Mixer.exe)
+
+This checks the new effects and that the Channel Strip sounds right. Use a mic or instrument on **Input 1**, and headphones.
+
+**Each effect**
+
+1. Start with **New**. Press **Tab**, type `filter`, and add a **Filter**. Wire **Input 1** → Filter, and the Filter → **Fader 1** (in place of the direct wire). Speak into the mic, then drag **High-pass freq** up towards 2 kHz: the sound should get thinner smoothly, with no clicks or zipper noise. Click **Bypass** on and off: the sound should switch smoothly, without a click.
+2. Swap the Filter for an **EQ** (same wiring). Boost **High** by +12 dB, then **Low**: you should hear more treble, then more bass. Select the EQ and try the frequency and Q sliders in the Inspector.
+3. Swap in a **Compressor**. Set **Threshold** to about −30 dB and speak loudly: the yellow bar above the meter shows how much it's turning you down. Raise **Ratio** and the bar should grow.
+4. Swap in a **Gate**. With **Threshold** at −50 dB it should go silent between words, and the yellow bar fills when it's closed. If it chops the start of words, lower the threshold.
+5. Swap in a **Limiter**. Its header shows a **64 smp** badge. Turn **Input gain** up to +24 dB and shout: the **Main Out** meter should never go past the ceiling (−1 dB) and should never show red clip lights.
+6. Add a **Delay** and a **Reverb** the same way. Change the delay **Time** while talking: it should glide, like tape, rather than click. Turn the reverb **Size** up: the tail gets longer.
+
+**Delay compensation**
+
+7. Wire **Input 1** → **Limiter** → **Master Bus**, and also Input 1 → Fader 1 → Pan 1 → Master Bus as usual, so the same signal takes both paths. It should sound like one clean voice, not hollow or "phasey". Click the wire from **Pan 1** into Master Bus: the Inspector says it's delayed by 64 samples to line up. Delete the limiter: the sound should not click.
+
+**Channel Strip**
+
+8. Press **Tab**, add a **Channel Strip**, and wire Input 1 through it to Master Bus. Double-click it: inside are Trim → Filter → EQ → Compressor → Fader → Pan. Adjust a few of them and check they work.
+
+**What we're looking for:** clicks, crackles, zipper noise, anything that gets stuck loud or silent, clip lights after the limiter, the CPU figure at the bottom climbing a lot, and anything that sounds wrong. Please describe what you did and send the **Copy report** text.
+
 ## 7. FireWire interfaces (later)
 
 When the M-Audio FireWire 1814 or ProFire Lightbridge are available:

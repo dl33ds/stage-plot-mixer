@@ -54,13 +54,19 @@ Template channelStripTemplate()
     s.setNodeName (in, "In");
     const auto trim = s.addNode (types::gain, { 240, 0 }, {}, group);
     s.setNodeName (trim, "Trim");
-    const auto fader = s.addNode (types::fader, { 480, 0 }, {}, group);
-    const auto pan = s.addNode (types::pan, { 720, 0 }, {}, group);
-    const auto out = s.addNode (types::groupOutput, { 960, 0 }, { 2.0f }, group);
+    const auto filter = s.addNode (types::filter, { 480, 0 }, {}, group);
+    const auto eq = s.addNode (types::eq, { 720, 0 }, {}, group);
+    const auto compressor = s.addNode (types::compressor, { 960, 0 }, {}, group);
+    const auto fader = s.addNode (types::fader, { 1200, 0 }, {}, group);
+    const auto pan = s.addNode (types::pan, { 1440, 0 }, {}, group);
+    const auto out = s.addNode (types::groupOutput, { 1680, 0 }, { 2.0f }, group);
     s.setNodeName (out, "Out");
 
     s.addWire (in, 0, trim, 0);
-    s.addWire (trim, 0, fader, 0);
+    s.addWire (trim, 0, filter, 0);
+    s.addWire (filter, 0, eq, 0);
+    s.addWire (eq, 0, compressor, 0);
+    s.addWire (compressor, 0, fader, 0);
     s.addWire (fader, 0, pan, 0);
     s.addWire (pan, 0, out, 0);
 

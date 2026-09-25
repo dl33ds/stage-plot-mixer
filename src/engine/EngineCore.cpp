@@ -4,6 +4,7 @@
 #include "engine/EngineCore.h"
 
 #include "core/CallbackStats.h"
+#include "engine/NoDenormals.h"
 
 #include <chrono>
 
@@ -63,6 +64,8 @@ void EngineCore::resetStats() noexcept
 void EngineCore::process (const float* const* inputs, int numInputs, float* const* outputs, int numOutputs,
                           int numSamples, double now) noexcept
 {
+    const ScopedNoDenormals noDenormals;
+
     numInputs = std::min (numInputs, maxDeviceChannels);
     numOutputs = std::min (numOutputs, maxDeviceChannels);
 

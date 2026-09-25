@@ -57,6 +57,9 @@ private:
     juce::Rectangle<int> portsArea() const;
     juce::Rectangle<int> meterArea() const;
     int meterHeight() const noexcept;
+    bool showsGainReduction() const noexcept;
+    juce::Rectangle<int> gainReductionArea() const;
+    void paintGainReduction (juce::Graphics&, juce::Rectangle<float> area);
     std::optional<PortRef> portAt (juce::Point<float> p) const;
     std::optional<std::pair<bool, int>> meterPort() const;  // (input, port)
     int meterChannels() const;
@@ -72,6 +75,8 @@ private:
     std::optional<PortRef> hoveredPort;
     juce::Point<float> lastMouse;
     int lastMeterStep = std::numeric_limits<int>::min();
+    int lastReductionStep = -1;
+    int latency = 0;
     bool built = false;
 
     struct Control

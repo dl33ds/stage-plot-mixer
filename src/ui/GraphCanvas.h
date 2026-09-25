@@ -90,6 +90,8 @@ public:
     model::Session& getSession() noexcept { return session; }
     Selection& getSelection() noexcept { return selection; }
     const MeterCache& getMeters() const noexcept { return meters; }
+    /** Samples of latency the node's processing adds (0 if none, or not built yet). */
+    int getNodeLatency (graph::NodeId node) const;
     void clearClips (graph::NodeId node);
 
     void nodeMouseDown (NodeComponent&, const juce::MouseEvent&);

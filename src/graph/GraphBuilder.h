@@ -7,6 +7,7 @@
 #include "graph/GraphDesc.h"
 
 #include <map>
+#include <set>
 #include <memory>
 
 namespace spm::graph
@@ -48,6 +49,15 @@ public:
     engine::NodeProcessor* getProcessor (NodeId node) const;
     const nodes::PortLayout* getLayout (NodeId node) const;
 
+    /** Latency (samples) from the sources to this node's output, including its own. */
+    int getPathLatency (NodeId node) const;
+
+    /** Samples a wire delays its signal by, to line up with parallel paths (PDC). */
+    int getWireDelay (WireId wire) const;
+
+    /** The most delay one wire will add; longer differences are left uncompensated. */
+    static constexpr int maxCompensationSamples = 1 << 20;
+
     /** Whether a wire in the last description was accepted. */
     bool isWireActive (WireId wire) const { return liveWires.count (wire) != 0; }
 
@@ -82,6 +92,7 @@ private:
 
     Key createNode (const nodes::NodeType& type, const nodes::ParamValues& params);
     void retireWire (WireEntry wire);
+    void compensateLatency (std::map<WireId, WireEntry>& wires, const std::set<WireId>& kept);
     void dropUnusedRetiredNodes();
 
     const nodes::NodeRegistry& registry;
@@ -92,6 +103,7 @@ private:
     std::map<NodeId, Key> liveNodes;
     std::map<WireId, WireEntry> liveWires;
     std::vector<WireEntry> fadingWires;
+    std::map<NodeId, int> pathLatency;
 };
 
 } // namespace spm::graph

@@ -196,7 +196,7 @@ TEST_CASE ("The Channel Strip template and saved templates", "[groups]")
     // A second one gets its own name and its own nodes.
     const auto second = model::addTemplate (s, model::channelStripTemplate(), 0, { 200, 200 });
     REQUIRE (s.getNodeName (second) == "Channel Strip 2");
-    REQUIRE (s.getChildren (second).size() == 5);
+    REQUIRE (s.getChildren (second).size() == 8);  // In, Trim, Filter, EQ, Compressor, Fader, Pan, Out
 
     const auto folder = juce::File::createTempFile ("templates");
     REQUIRE (model::saveTemplate (s, strip, "My Strip", folder).isEmpty());
@@ -206,8 +206,8 @@ TEST_CASE ("The Channel Strip template and saved templates", "[groups]")
 
     model::Session other;
     const auto copy = model::addTemplate (other, all[1], 0, {});
-    REQUIRE (other.getChildren (copy).size() == 5);
-    REQUIRE (other.toGraphDesc().wires.size() == 4);
+    REQUIRE (other.getChildren (copy).size() == 8);
+    REQUIRE (other.toGraphDesc().wires.size() == 7);
     folder.deleteRecursively();
 }
 

@@ -24,6 +24,12 @@ public:
     std::function<juce::StringArray (bool inputs)> getDeviceChannelNames;
     std::function<void()> onDelete, onDuplicate;
 
+    /** From the built graph: samples of latency a node adds, and the delay a wire adds so
+        parallel paths line up (PDC).
+    */
+    std::function<int (graph::NodeId)> getNodeLatency;
+    std::function<int (graph::WireId)> getWireDelay;
+
     /** While true, a Recorder's channel count is locked (it would end its files). */
     std::function<bool()> isRecording;
 

@@ -8,6 +8,7 @@
 #include <juce_core/juce_core.h>
 
 #include <map>
+#include <optional>
 #include <vector>
 
 namespace spm::ui
@@ -35,6 +36,9 @@ public:
     /** Makes a port show another port's levels (a group's ports show their pins'). */
     void alias (graph::NodeId node, bool input, int port, graph::NodeId fromNode, bool fromInput, int fromPort);
 
+    /** Dynamics nodes: gain reduction in dB (0 or more), with the same release as the meters. */
+    std::optional<float> getGainReduction (graph::NodeId node) const;
+
     /** Clears the clip indicators of a node's meters. */
     void clearClips (graph::GraphBuilder& builder, graph::NodeId node);
 
@@ -42,6 +46,7 @@ public:
 
 private:
     std::map<std::tuple<graph::NodeId, bool, int>, PortLevels> levels;
+    std::map<graph::NodeId, float> reduction;
 };
 
 } // namespace spm::ui

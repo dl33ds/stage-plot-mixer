@@ -23,6 +23,7 @@ add_library(spm_audio STATIC
     engine/EngineCore.cpp
     engine/GraphHandoff.cpp
     nodes/BuiltInNodes.cpp
+    nodes/EffectNodes.cpp
     graph/GraphBuilder.cpp
     graph/GraphRules.cpp
 )

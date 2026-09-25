@@ -134,6 +134,7 @@ std::unique_ptr<engine::CompiledGraph> GraphBuilder::build (const GraphDesc& des
 
     std::map<WireId, WireEntry> accepted;
     std::set<std::tuple<Key, int, Key, int>> connections;
+    std::set<WireId> kept;  // wires that kept their state from the last build
 
     for (const auto& w : desc.wires)
     {
@@ -165,6 +166,7 @@ std::unique_ptr<engine::CompiledGraph> GraphBuilder::build (const GraphDesc& des
         {
             entry.state = previous->second.state;
             liveWires.erase (previous);
+            kept.insert (w.id);
         }
         else
         {
@@ -177,6 +179,8 @@ std::unique_ptr<engine::CompiledGraph> GraphBuilder::build (const GraphDesc& des
         edges.emplace (entry.source, entry.dest);
         accepted.emplace (w.id, std::move (entry));
     }
+
+    compensateLatency (accepted, kept);
 
     // Whatever is left over was removed or changed.
     for (auto& [id, wire] : liveWires)
@@ -197,6 +201,76 @@ std::unique_ptr<engine::CompiledGraph> GraphBuilder::build (const GraphDesc& des
     dropUnusedRetiredNodes();
 
     return rebuild();
+}
+
+void GraphBuilder::compensateLatency (std::map<WireId, WireEntry>& wires, const std::set<WireId>& kept)
+{
+    // Latency where each node's signal arrives (the latest of its inputs) and where it leaves.
+    std::map<Key, int> arrives, leaves;
+    std::map<Key, int> inDegree;
+
+    for (const auto& [id, key] : liveNodes)
+        inDegree[key] = 0;
+
+    for (const auto& [id, w] : wires)
+        ++inDegree[w.dest];
+
+    std::vector<Key> ready;
+    for (const auto& [key, degree] : inDegree)
+        if (degree == 0)
+            ready.push_back (key);
+
+    while (! ready.empty())
+    {
+        const auto key = ready.back();
+        ready.pop_back();
+        leaves[key] = arrives[key] + std::max (0, entries.at (key).processor->getLatencySamples());
+
+        for (const auto& [id, w] : wires)
+        {
+            if (w.source != key)
+                continue;
+
+            arrives[w.dest] = std::max (arrives[w.dest], leaves[key]);
+
+            if (--inDegree[w.dest] == 0)
+                ready.push_back (w.dest);
+        }
+    }
+
+    // Recorders line up with each other, so raw and processed tracks of a take match.
+    // (Hardware outputs aren't delayed to match each other: that would add latency live.)
+    int recorders = 0;
+    for (const auto& [id, key] : liveNodes)
+        if (entries.at (key).type->id == nodes::types::recorder)
+            recorders = std::max (recorders, arrives[key]);
+
+    for (const auto& [id, key] : liveNodes)
+        if (entries.at (key).type->id == nodes::types::recorder)
+        {
+            arrives[key] = recorders;
+            leaves[key] = recorders + std::max (0, entries.at (key).processor->getLatencySamples());
+        }
+
+    pathLatency.clear();
+    for (const auto& [id, key] : liveNodes)
+        pathLatency[id] = leaves[key];
+
+    // Each wire delays its signal by however much earlier it arrives than the latest input.
+    for (auto& [id, w] : wires)
+    {
+        const auto needed = std::clamp (arrives[w.dest] - leaves[w.source], 0, maxCompensationSamples);
+
+        if (w.state->getDelaySamples() == needed)
+            continue;
+
+        // A new delay needs a new delay line: the old one fades out as the new one fades in.
+        if (kept.count (id) != 0)
+            retireWire (w);
+
+        const auto channels = entries.at (w.source).layout.outputs[(size_t) w.sourcePort].channels;
+        w.state = std::make_shared<engine::WireState> (w.state->getGain(), needed, channels, maxBlock);
+    }
 }
 
 std::unique_ptr<engine::CompiledGraph> GraphBuilder::rebuild() const
@@ -329,6 +403,18 @@ engine::NodeProcessor* GraphBuilder::getProcessor (NodeId node) const
 {
     const auto it = liveNodes.find (node);
     return it != liveNodes.end() ? entries.at (it->second).processor.get() : nullptr;
+}
+
+int GraphBuilder::getPathLatency (NodeId node) const
+{
+    const auto it = pathLatency.find (node);
+    return it != pathLatency.end() ? it->second : 0;
+}
+
+int GraphBuilder::getWireDelay (WireId wire) const
+{
+    const auto it = liveWires.find (wire);
+    return it != liveWires.end() ? it->second.state->getDelaySamples() : 0;
 }
 
 const nodes::PortLayout* GraphBuilder::getLayout (NodeId node) const

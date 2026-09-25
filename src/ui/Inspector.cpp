@@ -402,6 +402,10 @@ void Inspector::buildForNode (graph::NodeId id)
     addText ("Inputs: " + describePorts (layout.inputs), 24, false);
     addText ("Outputs: " + describePorts (layout.outputs), 24, false);
 
+    if (const auto latency = getNodeLatency ? getNodeLatency (id) : 0; latency > 0)
+        addText ("Delays its signal by " + juce::String (latency) + " samples. Parallel paths are delayed "
+                 "to match, so everything arriving at a mix stays in time.", 50);
+
     addButtons();
 }
 
@@ -454,6 +458,23 @@ void Inspector::buildForWire (graph::WireId wireId)
 
     addText ("Where the channel counts differ, a mono signal is copied to every channel, and several channels "
              "into a mono input are averaged.", 64);
+
+    // The compensation delay comes from the built graph, which may update after this panel.
+    auto* delayText = addText ({}, 0);
+    rows.back().refresh = [this, wireId, delayText, row = rows.size() - 1]
+    {
+        const auto delay = getWireDelay ? getWireDelay (wireId) : 0;
+        delayText->setText (delay > 0 ? "Delayed by " + juce::String (delay) + " samples to line up with a parallel "
+                                        "path through a node that adds delay."
+                                      : juce::String(),
+                            juce::dontSendNotification);
+
+        if (const auto height = delay > 0 ? 50 : 0; rows[row].height != height)
+        {
+            rows[row].height = height;
+            layoutContent();
+        }
+    };
 
     auto remove = std::make_unique<IconButton> ("trash", "Delete this wire (Del)", "Delete wire");
     remove->onClick = [this] { if (onDelete) onDelete(); };

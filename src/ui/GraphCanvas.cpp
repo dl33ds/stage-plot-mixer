@@ -411,6 +411,12 @@ void GraphCanvas::changeListenerCallback (juce::ChangeBroadcaster*)
     repaint();
 }
 
+int GraphCanvas::getNodeLatency (graph::NodeId node) const
+{
+    const auto* processor = builder.getProcessor (node);
+    return processor != nullptr ? processor->getLatencySamples() : 0;
+}
+
 void GraphCanvas::clearClips (graph::NodeId node)
 {
     meters.clearClips (builder, node);

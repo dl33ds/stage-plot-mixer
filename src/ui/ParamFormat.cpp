@@ -92,6 +92,16 @@ juce::String formatParam (const nodes::ParamSpec& spec, float value)
         return text + " dB";
     }
 
+    if (spec.unit == "ms")
+        return value >= 1000.0f ? juce::String (value / 1000.0f, 2) + " s"
+                                : juce::String (value, value < 10.0f ? 1 : 0) + " ms";
+
+    if (spec.unit == "%")
+        return juce::String (juce::roundToInt (value)) + "%";
+
+    if (spec.unit == ":1")
+        return juce::String (value, value < 10.0f ? 1 : 0) + ":1";
+
     return juce::String (value, 2) + (spec.unit.empty() ? "" : " " + spec.unit);
 }
 
@@ -127,6 +137,8 @@ float parseParam (const nodes::ParamSpec& spec, const juce::String& rawText)
     auto value = text.getFloatValue();
     if (spec.unit == "Hz" && text.contains ("k"))
         value *= 1000.0f;
+    if (spec.unit == "ms" && text.endsWith ("s") && ! text.endsWith ("ms"))
+        value *= 1000.0f;
 
     return juce::jlimit (spec.minValue, spec.maxValue, value);
 }
@@ -135,7 +147,7 @@ void configureSlider (juce::Slider& slider, const nodes::ParamSpec& spec)
 {
     const auto integer = spec.kind != nodes::ParamKind::continuous;
 
-    if (spec.unit == "dB" && spec.minValue < -30.0f)
+    if (spec.unit == "dB" && spec.minValue < -30.0f && ! spec.linearDb)
         slider.setNormalisableRange (faderRange (spec.minValue, spec.maxValue, 0.1));
     else
     {

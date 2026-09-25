@@ -3,6 +3,7 @@
 
 #include "nodes/NodeTypes.h"
 
+#include "nodes/ParamHelpers.h"
 #include "nodes/Recorder.h"
 
 #include "engine/CompiledGraph.h"
@@ -447,68 +448,6 @@ public:
     void process (const ProcessContext&, const ChannelSpan*, const ChannelSpan*) noexcept override {}
 };
 
-//==============================================================================
-ParamSpec integerParam (std::string id, std::string name, int minValue, int maxValue, int def, bool structural, std::string tooltip = {})
-{
-    ParamSpec p;
-    p.id = std::move (id);
-    p.name = std::move (name);
-    p.kind = ParamKind::integer;
-    p.minValue = (float) minValue;
-    p.maxValue = (float) maxValue;
-    p.defaultValue = (float) def;
-    p.structural = structural;
-    p.tooltip = std::move (tooltip);
-    return p;
-}
-
-ParamSpec decibelParam (std::string id, std::string name, float minDb, float maxDb, float def, bool minusInfinity)
-{
-    ParamSpec p;
-    p.id = std::move (id);
-    p.name = std::move (name);
-    p.minValue = minDb;
-    p.maxValue = maxDb;
-    p.defaultValue = def;
-    p.unit = "dB";
-    p.minusInfinityAtMinimum = minusInfinity;
-    return p;
-}
-
-ParamSpec toggleParam (std::string id, std::string name, bool def, std::string tooltip = {})
-{
-    ParamSpec p;
-    p.id = std::move (id);
-    p.name = std::move (name);
-    p.kind = ParamKind::toggle;
-    p.minValue = 0.0f;
-    p.maxValue = 1.0f;
-    p.defaultValue = def ? 1.0f : 0.0f;
-    p.tooltip = std::move (tooltip);
-    return p;
-}
-
-ParamSpec choiceParam (std::string id, std::string name, std::vector<std::string> choices, int def, std::string tooltip = {})
-{
-    ParamSpec p;
-    p.id = std::move (id);
-    p.name = std::move (name);
-    p.kind = ParamKind::choice;
-    p.minValue = 0.0f;
-    p.maxValue = (float) choices.size() - 1.0f;
-    p.defaultValue = (float) def;
-    p.choices = std::move (choices);
-    p.tooltip = std::move (tooltip);
-    return p;
-}
-
-/** For settings you make once, not while mixing. */
-ParamSpec notOnFace (ParamSpec p)
-{
-    p.onFace = false;
-    return p;
-}
-
 int channelsOf (const NodeType& type, const ParamValues& v, std::string_view id = "channels")
 {
     const auto index = type.paramIndex (id);
@@ -651,6 +590,8 @@ NodeRegistry makeRegistry()
         };
         registry.add (std::move (t));
     };
+
+    addEffectNodes (registry);
 
     levelNode (types::fader, "Fader", "sliders-vertical", "A level control with mute.", 1);
     levelNode (types::bus, "Bus", "git-merge", "Mixes everything wired into it, with a master level.", 2);

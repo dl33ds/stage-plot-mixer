@@ -32,6 +32,7 @@ struct ParamSpec
     bool structural = false;           // changes ports: the node gets a new processor
     bool logarithmic = false;          // e.g. frequency
     bool minusInfinityAtMinimum = false;
+    bool linearDb = false;             // dB spread evenly on sliders (thresholds), not the fader law
     std::vector<std::string> choices;  // for ParamKind::choice
     std::string tooltip;
     bool onFace = true;                // shown on the node's face (if not structural)
@@ -96,6 +97,13 @@ namespace types
     inline constexpr std::string_view hardwareOutput = "hw.output";
     inline constexpr std::string_view testGenerator  = "gen.test";
     inline constexpr std::string_view gain           = "proc.gain";
+    inline constexpr std::string_view filter         = "proc.filter";
+    inline constexpr std::string_view eq             = "proc.eq";
+    inline constexpr std::string_view compressor     = "proc.compressor";
+    inline constexpr std::string_view limiter        = "proc.limiter";
+    inline constexpr std::string_view gate           = "proc.gate";
+    inline constexpr std::string_view delay          = "proc.delay";
+    inline constexpr std::string_view reverb         = "proc.reverb";
     inline constexpr std::string_view fader          = "mix.fader";
     inline constexpr std::string_view pan            = "mix.pan";
     inline constexpr std::string_view bus            = "mix.bus";

@@ -45,13 +45,18 @@ void CompiledGraph::resetProcessors() noexcept
 
 void CompiledGraph::mixWire (WireInput& wire, const ChannelSpan& destination, double sampleRate) noexcept
 {
+    auto source = buffers[(size_t) wire.sourceBuffer]->span (destination.numSamples);
+
+    // The delay line runs even while the wire is silent, so it never replays old audio.
+    if (wire.state->getDelaySamples() > 0)
+        source = wire.state->delayBlock (source);
+
     if (! wire.state->beginBlock (sampleRate))
     {
         wire.state->getSmoother().skip (destination.numSamples);
         return;
     }
 
-    const auto& source = buffers[(size_t) wire.sourceBuffer]->span (destination.numSamples);
     const auto n = destination.numSamples;
     auto& smoother = wire.state->getSmoother();
 
