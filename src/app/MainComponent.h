@@ -4,6 +4,7 @@
 #pragma once
 
 #include "app/AudioEngine.h"
+#include "app/RecordingManager.h"
 #include "app/SessionController.h"
 #include "app/StatusBar.h"
 #include "ui/GraphCanvas.h"
@@ -30,6 +31,12 @@ public:
     /** Selects the node with this name (for development snapshots). */
     void selectNodeNamed (const juce::String& name);
 
+    /** Adds a Recorder after the node with this name (for development snapshots). */
+    void addRecorderAfter (const juce::String& name);
+
+    /** Starts or stops a take (the Record button). */
+    void toggleRecording();
+
     void paint (juce::Graphics&) override;
     void resized() override;
     bool keyPressed (const juce::KeyPress&) override;
@@ -52,6 +59,9 @@ private:
     void updateTitle();
     void updateButtons();
     void showAudioSettings();
+    void showRecordingMenu();
+    void updateRecordButtons();
+    void checkForInterruptedTakes();
     void showError (const juce::String& title, const juce::String& message);
     juce::StringArray deviceChannelNames (bool inputs) const;
     static juce::File sessionsFolder();
@@ -65,6 +75,7 @@ private:
     ui::GraphCanvas canvas { session, selection, engine.getBuilder() };
     ui::Inspector inspector { session, selection };
     StatusBar statusBar { engine };
+    RecordingManager recording { engine, session, settings };
 
     ui::IconButton newButton { "file-plus", "New session (Ctrl+N)", "New" },
         openButton { "folder-open", "Open a session (Ctrl+O)", "Open" },
@@ -73,6 +84,9 @@ private:
         undoButton { "undo-2", "Undo (Ctrl+Z)" },
         redoButton { "redo-2", "Redo (Ctrl+Shift+Z or Ctrl+Y)" },
         addButton { "plus", "Add a node (Tab)", "Add node" },
+        recordButton { "record", "Record every armed Recorder node (Ctrl+R)", "Record" },
+        markerButton { "flag", "Drop a marker in the take (M)", "Marker" },
+        recordMenuButton { "chevron-down", "Recording options: pre-roll, disk warning, takes folder" },
         muteButton { "volume-2", "Mute or unmute every output (Ctrl+M)", "Outputs on" },
         settingsButton { "settings", "Audio interface, sample rate and buffer size", "Audio settings" };
 
@@ -81,6 +95,8 @@ private:
     juce::File currentFile;
     bool modified = false;
     bool lastMuted = false;
+    juce::Rectangle<int> recordStatusArea;
+    juce::String lastRecordStatus;
 };
 
 } // namespace spm::app

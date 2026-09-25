@@ -23,6 +23,7 @@ public:
     void setIcon (const juce::String& iconName);
     void setLabel (const juce::String& text);
     void setHighlightColour (std::optional<juce::Colour> colour);
+    void setIconColour (std::optional<juce::Colour> colour);
 
     void paintButton (juce::Graphics&, bool highlighted, bool down) override;
 
@@ -31,7 +32,7 @@ public:
 
 private:
     juce::String icon, label;
-    std::optional<juce::Colour> highlight;
+    std::optional<juce::Colour> highlight, iconColour;
 };
 
 } // namespace spm::ui

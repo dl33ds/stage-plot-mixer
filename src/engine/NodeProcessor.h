@@ -23,6 +23,7 @@ struct ProcessContext
     ChannelSpan deviceInputs;   // read only
     ChannelSpan deviceOutputs;  // hardware output nodes add into these
     std::int64_t samplePosition = 0;
+    std::uint32_t recordTake = 0;  // the take being recorded, or 0; the same for every chunk of a callback
 };
 
 /** The audio-thread half of a node.

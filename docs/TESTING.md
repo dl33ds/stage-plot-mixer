@@ -99,6 +99,37 @@ This checks the node editor and that the audio engine runs cleanly on your inter
 
 To try the mixer without an interface, choose the **Simulated** device type in Audio settings. It has 32 inputs carrying quiet test tones.
 
+## 6b. Test E: Recording, about 20 minutes (Stage Plot Mixer.exe)
+
+This checks that takes are recorded cleanly, completely and in sync.
+
+**Setup**
+
+1. Start **Stage Plot Mixer.exe** with the Scarlett on **ASIO, 48000, 128** as in test D. Click **New** for a fresh mix, then **Save** it (for example as `RecordTest`). Takes go in a **Takes** folder next to the session.
+2. Press **Tab**, type `recorder`, press **Enter**. In its settings on the right, set **Channels** to **1**, then wire **Input 1**'s output into it. This is a *raw* recorder: with Format and Files on **Auto** it records 24-bit.
+3. Add a second Recorder and wire the **Master Fader**'s output into it. This is a *mix* recorder: it records 32-bit float, stereo.
+4. Rename them by double-clicking their titles, for example `Vocal raw` and `Mix`. Both should show a red **Armed** button.
+
+**Recording**
+
+5. Next to **Record** (top right) you should see how much recording time the disk has. Click **Record** (or press **Ctrl+R**). It turns into a red **Stop** button, and a timer runs.
+6. Speak or play into input 1 for about a minute. Press **M** a couple of times at moments you'll recognise (for example, say "marker" out loud as you press it).
+7. While it records, move the fader and pan, and try to change a Recorder's **Channels** (it should be greyed out).
+8. Click **Stop**. The button shows *Saving…* briefly.
+9. Open the menu next to **Marker** (the down arrow) and choose **Open takes folder**. Open the newest take folder. It should contain `Vocal raw.wav`, `Mix.wav` and `take.json`.
+10. Load both WAVs into a DAW or Audacity, lined up at the start. The vocal should line up exactly with the mix. In a DAW that reads BWF markers (Reaper, for example), the markers should be where you pressed M.
+
+**Longer take and pre-roll**
+
+11. In the menu, set **Pre-roll** to 10 seconds. Talk for a few seconds, *then* press Record. The take should start 10 seconds earlier, including what you said.
+12. Record for **15 minutes** while using the PC normally. Afterwards, open `take.json` in Notepad: `"dropouts"` and `"errors"` should both be empty (`[]`).
+
+**Crash recovery** (optional)
+
+13. Start recording, wait 20 seconds, then end the program from **Task Manager** (*End task*). Start it again. It should say a take was recovered. That take's files should play, missing only the last couple of seconds.
+
+**What we're looking for:** files that are complete, in sync, and free of clicks, with no dropouts, and pre-roll and markers that work. Please send `take.json` from the 15-minute take along with the **Copy report** text.
+
 ## 7. FireWire interfaces (later)
 
 When the M-Audio FireWire 1814 or ProFire Lightbridge are available:

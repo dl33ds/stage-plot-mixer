@@ -3,6 +3,8 @@
 
 #include "nodes/NodeTypes.h"
 
+#include "nodes/Recorder.h"
+
 #include "engine/CompiledGraph.h"
 #include "engine/Smoother.h"
 
@@ -473,6 +475,20 @@ ParamSpec toggleParam (std::string id, std::string name, bool def, std::string t
     return p;
 }
 
+ParamSpec choiceParam (std::string id, std::string name, std::vector<std::string> choices, int def, std::string tooltip = {})
+{
+    ParamSpec p;
+    p.id = std::move (id);
+    p.name = std::move (name);
+    p.kind = ParamKind::choice;
+    p.minValue = 0.0f;
+    p.maxValue = (float) choices.size() - 1.0f;
+    p.defaultValue = (float) def;
+    p.choices = std::move (choices);
+    p.tooltip = std::move (tooltip);
+    return p;
+}
+
 int channelsOf (const NodeType& type, const ParamValues& v, std::string_view id = "channels")
 {
     const auto index = type.paramIndex (id);
@@ -735,6 +751,33 @@ NodeRegistry makeRegistry()
         t.create = [] (const ParamValues&, const PortLayout& l) -> std::unique_ptr<NodeProcessor>
         {
             return std::make_unique<MeterProcessor> (l.inputs[0].channels, 1);
+        };
+        registry.add (std::move (t));
+    }
+
+    //--------------------------------------------------------------------------
+    {
+        NodeType t;
+        t.id = types::recorder;
+        t.name = "Recorder";
+        t.category = "Destinations";
+        t.icon = "record";
+        t.description = "Records whatever is wired into it when you press Record. Wire it straight from inputs, "
+                        "after processing, or from a mix.";
+        t.params = { toggleParam ("armed", "Armed", true, "Only armed recorders record when you press Record"),
+                     choiceParam ("format", "Format", { "Auto", "24-bit", "32-bit float" }, recorder::formatAuto,
+                                  "Auto: 24-bit when wired straight from hardware inputs, otherwise 32-bit float (which can't clip)"),
+                     choiceParam ("files", "Files", { "Auto", "One per channel", "Single file" }, recorder::filesAuto,
+                                  "Auto: one file for mono or stereo, otherwise one mono file per channel"),
+                     integerParam ("channels", "Channels", 1, maxPortChannels, 2, true) };
+        t.layout = [] (const ParamValues& v)
+        {
+            const auto& self = *NodeRegistry::builtIn().find (types::recorder);
+            return PortLayout { { { "In", channelsOf (self, v) } }, {} };
+        };
+        t.create = [] (const ParamValues&, const PortLayout& l) -> std::unique_ptr<NodeProcessor>
+        {
+            return std::make_unique<RecorderProcessor> (l.inputs[0].channels, 4);
         };
         registry.add (std::move (t));
     }

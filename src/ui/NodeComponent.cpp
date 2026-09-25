@@ -30,7 +30,7 @@ bool isBipolar (const nodes::ParamSpec& spec)
 
 juce::Colour toggleColour (const nodes::ParamSpec& spec)
 {
-    if (spec.id == "mute") return theme::danger;
+    if (spec.id == "mute" || spec.id == "armed") return theme::danger;
     if (spec.id == "invert") return theme::warning;
     return theme::good;
 }

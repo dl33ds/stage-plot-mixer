@@ -277,12 +277,15 @@ void Inspector::buildForNode (graph::NodeId id)
         addHeading ("Settings");
 
     const auto isHardware = type->id == nodes::types::hardwareInput || type->id == nodes::types::hardwareOutput;
+    const auto lockStructure = type->id == nodes::types::recorder && isRecording && isRecording();
 
     for (int i = 0; i < (int) type->params.size(); ++i)
     {
         const auto& spec = type->params[(size_t) i];
-        const auto tooltip = juce::String (spec.tooltip.empty() ? spec.name : spec.tooltip)
-                             + (spec.structural ? " (changes the node's ports)" : "");
+        const auto tooltip = lockStructure && spec.structural
+                                 ? juce::String ("Can't change while recording")
+                                 : juce::String (spec.tooltip.empty() ? spec.name : spec.tooltip)
+                                       + (spec.structural ? " (changes the node's ports)" : "");
 
         if (spec.kind == nodes::ParamKind::toggle)
         {
@@ -360,6 +363,7 @@ void Inspector::buildForNode (graph::NodeId id)
                 }
             };
 
+            c->setEnabled (! (lockStructure && spec.structural));
             addRow (spec.name, std::move (combo), [this, id, i, c, spec]
             {
                 const auto value = juce::roundToInt (session.getParam (id, i));

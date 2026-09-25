@@ -2,7 +2,7 @@
 
 *A multi-channel real-time audio mixer & recorder*
 
-**Status:** v0.6 (requirements confirmed; Phase 2 in testing)
+**Status:** v0.7 (requirements confirmed; Phases 2–3 in testing)
 **Target platforms:** Windows 10 / 11 (x64) first; macOS and Linux later
 **License:** GNU AGPLv3 (see [§3.5](#35-licensing-open-source))
 **Repository:** <https://github.com/dl33ds/stage-plot-mixer>
@@ -313,6 +313,14 @@ An SSD is recommended. The Recorder shows **remaining record time** and warns at
 - **Markers:** press M during recording to drop a named marker (written to `take.json` and as BWF cue points)
 - **Crash safety:** headers are rewritten every ~2 s; unfinished takes are detected and repaired on next launch
 
+#### As built (Phase 3)
+- **Transport:** Record sets a take number that the audio thread latches once per callback, so every Recorder starts and stops in the same callback. Each Recorder notes the exact sample position in its own stream; the disk writer starts each file there.
+- **Ring buffers:** 2¹⁹ samples per channel (about 11 s at 48 kHz). If the writer falls further behind than that, the lost stretch is written as silence (so files stay aligned) and logged as a dropout in `take.json`.
+- **Recorder node settings:** Armed; Format (Auto / 24-bit / 32-bit float); Files (Auto / mono per channel / one file); Channels (1–64). With Format on **Auto**, 24-bit is used when every wire into the Recorder comes straight from a Hardware Input at unity gain, and float otherwise. With Files on **Auto**, 1–2 channels go in one file and more are split into mono files. Channels can't be changed while recording.
+- **Toolbar:** Record/Stop (Ctrl+R), a timer and the recording time left, Marker (M), and a menu for pre-roll (off/10/30/60 s), the low-disk warning (10 min–2 h) and the takes folder.
+- **Files:** named after the Recorder (`Drums 1.wav`, `Drums 2.wav`… when split). The BWF `bext` chunk holds the time reference; markers are written as `cue` + `labl` chunks. A take stops by itself if the device or sample rate changes. Unsaved sessions record into Documents/StagePlotMixer/Recordings.
+- **Crash recovery:** unfinished takes are noted in the settings; on the next launch their WAV headers are rebuilt from the file length, `take.json` is marked `"recovered"`, and the user is told.
+
 ```
 MySession/
   MySession.mixproj
@@ -442,8 +450,8 @@ Phase 5 is largely independent of 3–4 and can move earlier if needed.
 | D1 | C++20 + JUCE 9.0.2 + CMake | **Accepted** |
 | D2 | Single primary device; ASIO default, WASAPI supported | **Accepted** |
 | D3 | FireWire via owner-supplied vendor ASIO drivers | **Accepted** |
-| D4 | Stream-to-disk via RAM ring buffers + optional pre-roll | Proposed |
-| D5 | BWF + auto RF64, mono files, 24-bit raw / 32-bit float processed | Proposed |
+| D4 | Stream-to-disk via RAM ring buffers + optional pre-roll | **Accepted** (built in Phase 3) |
+| D5 | BWF + auto RF64, mono files, 24-bit raw / 32-bit float processed | **Accepted** (built in Phase 3) |
 | D6 | Hierarchical node graph is the primary UI; faces tear off into panels | **Accepted** |
 | D7 | Cycles blocked; PDC in compiler; flattening of groups | Proposed |
 | D8 | Plugins: VST3 + cross-platform LADSPA; sandbox option | **Accepted** (no VST2) |
@@ -457,6 +465,7 @@ Phase 5 is largely independent of 3–4 and can move earlier if needed.
 ---
 
 ## 12. Change History
+- **v0.7**: Phase 3 (Recording) built; see *As built* in §5.4. Pre-roll choices are off/10/30/60 s rather than 30–120 s, to keep memory use modest on 32 channels.
 - **v0.6**: App Audio capture (the old Phase 7) removed from the plan and moved to the backlog (§14.1). Later phases renumbered: Polish & release is now Phase 7, Cross-platform is Phase 8.
 - **v0.5**: Phase 0b (FireWire) deferred until the hardware arrives; it still runs alongside later phases and is required before release. Phase 1's 1-hour 32-channel hardware test moves to Phase 0b; Phase 1 instead uses a simulated 32-channel device plus a 10-minute Scarlett run.
 - **v0.4**: Confirmed the multiple-capture-points interpretation (R12). From the first Scarlett test run: Windows shared-mode audio (fixed 10 ms buffer, dropouts) is confirmed unsuitable for live paths, and spm-diag now ranks and recommends ASIO. Scarlett Solo on Focusrite USB ASIO ran cleanly at 192, 128 and 64 samples (reported round trip 920 / 696 / 376 samples). USB 1 ms frame jitter is now tolerated by the late-callback check.

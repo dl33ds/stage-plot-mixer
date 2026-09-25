@@ -12,6 +12,7 @@ target_sources(StagePlotMixer PRIVATE
     Main.cpp
     AudioEngine.cpp
     MainComponent.cpp
+    RecordingManager.cpp
     SessionController.cpp
     SimulatedAudioDevice.cpp
     StatusBar.cpp
@@ -44,4 +45,4 @@ juce_add_binary_data(spm_resources
         ${PROJECT_SOURCE_DIR}/resources/fonts/Inter-SemiBold.ttf
         ${SPM_ICON_FILES})
 
-target_link_libraries(StagePlotMixer PRIVATE spm_model spm_resources)
+target_link_libraries(StagePlotMixer PRIVATE spm_model spm_record spm_resources)

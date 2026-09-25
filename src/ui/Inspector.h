@@ -24,6 +24,12 @@ public:
     std::function<juce::StringArray (bool inputs)> getDeviceChannelNames;
     std::function<void()> onDelete, onDuplicate;
 
+    /** While true, a Recorder's channel count is locked (it would end its files). */
+    std::function<bool()> isRecording;
+
+    /** Rebuilds the controls, e.g. when recording starts or stops. */
+    void refreshAll() { rebuild(); }
+
     void paint (juce::Graphics&) override;
     void resized() override;
 

@@ -30,6 +30,17 @@ target_include_directories(spm_audio PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_features(spm_audio PUBLIC cxx_std_20)
 target_link_libraries(spm_audio PUBLIC spm_core)
 
+# spm_record: the disk writer and Broadcast WAV files (framework-independent).
+add_library(spm_record STATIC
+    record/DiskWriter.cpp
+    record/WavFile.cpp
+)
+target_include_directories(spm_record PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_features(spm_record PUBLIC cxx_std_20)
+target_link_libraries(spm_record PUBLIC spm_audio)
+find_package(Threads REQUIRED)
+target_link_libraries(spm_record PUBLIC Threads::Threads)
+
 # spm_juce: the JUCE modules, compiled once and shared by the app and the model tests.
 add_library(spm_juce STATIC)
 target_link_libraries(spm_juce

@@ -19,7 +19,7 @@ const juce::String fileExtension = ".mixproj";
 MainComponent::MainComponent (AudioEngine& e, juce::PropertiesFile& s) : engine (e), settings (s)
 {
     for (auto* b : { &newButton, &openButton, &saveButton, &saveAsButton, &undoButton, &redoButton, &addButton,
-                     &muteButton, &settingsButton })
+                     &recordButton, &markerButton, &recordMenuButton, &muteButton, &settingsButton })
         addAndMakeVisible (b);
 
     addAndMakeVisible (canvas);
@@ -35,6 +35,14 @@ MainComponent::MainComponent (AudioEngine& e, juce::PropertiesFile& s) : engine 
     addButton.onClick = [this] { canvas.showQuickAdd (canvas.getLocalBounds().getCentre().toFloat()); };
     muteButton.onClick = [this] { engine.getCore().setOutputsMuted (! engine.getCore().areOutputsMuted()); timerCallback(); };
     settingsButton.onClick = [this] { showAudioSettings(); };
+    recordButton.onClick = [this] { toggleRecording(); };
+    markerButton.onClick = [this] { recording.addMarker(); };
+    recordMenuButton.onClick = [this] { showRecordingMenu(); };
+
+    recording.getSessionFile = [this] { return currentFile; };
+    recording.onStateChanged = [this] { updateRecordButtons(); inspector.refreshAll(); };
+    recording.onProblem = [this] (const juce::String& title, const juce::String& message) { showError (title, message); };
+    inspector.isRecording = [this] { return recording.isRecording(); };
 
     canvas.getDeviceChannelNames = inspector.getDeviceChannelNames = [this] (bool inputs) { return deviceChannelNames (inputs); };
     inspector.onDelete = [this] { canvas.deleteSelection(); };
@@ -60,6 +68,8 @@ MainComponent::MainComponent (AudioEngine& e, juce::PropertiesFile& s) : engine 
     setSize (1280, 800);
     startTimerHz (4);
     updateButtons();
+    updateRecordButtons();
+    checkForInterruptedTakes();
 
     juce::MessageManager::callAsync ([safe = juce::Component::SafePointer (this)]
     {
@@ -88,6 +98,17 @@ void MainComponent::selectNodeNamed (const juce::String& name)
     for (auto id : session.getNodeIds())
         if (session.getNodeName (id) == name)
             selection.selectOnly (id);
+}
+
+void MainComponent::addRecorderAfter (const juce::String& name)
+{
+    for (auto id : session.getNodeIds())
+        if (session.getNodeName (id) == name)
+        {
+            const auto recorder = session.addNode (nodes::types::recorder, session.getNodePosition (id) + juce::Point<float> (0.0f, 160.0f));
+            session.addWire (id, 0, recorder, 0);
+            setModified (false);
+        }
 }
 
 //==============================================================================
@@ -202,6 +223,20 @@ bool MainComponent::writeTo (const juce::File& file)
 
 void MainComponent::confirmDiscard (std::function<void()> then)
 {
+    if (recording.isRecording())
+    {
+        auto options = juce::MessageBoxOptions::makeOptionsOkCancel (juce::MessageBoxIconType::QuestionIcon, "Stop recording?",
+                                                                     "A take is being recorded. Stop it first?",
+                                                                     "Stop recording", "Keep recording", this);
+
+        juce::AlertWindow::showAsync (options, [safe = juce::Component::SafePointer (this), then] (int result)
+        {
+            if (safe != nullptr && result == 1)
+                safe->recording.stop ([safe, then] { if (safe != nullptr) safe->confirmDiscard (then); });
+        });
+        return;
+    }
+
     if (! modified)
     {
         then();
@@ -272,6 +307,25 @@ void MainComponent::changeListenerCallback (juce::ChangeBroadcaster*)
 
 void MainComponent::timerCallback()
 {
+    // Recording counter and disk space.
+    juce::String status;
+    if (recording.getState() == RecordingManager::State::recording)
+    {
+        const auto seconds = (int) recording.getRecordedSeconds();
+        status = juce::String::formatted ("%02d:%02d:%02d", seconds / 3600, (seconds / 60) % 60, seconds % 60) + "|" + recording.getTimeLeftText();
+    }
+    else if (recording.getState() == RecordingManager::State::idle)
+    {
+        status = "|" + recording.getTimeLeftText();
+    }
+    status << (recording.isDiskLow() ? "!" : "") << recording.getNumArmed();
+
+    if (status != lastRecordStatus)
+    {
+        lastRecordStatus = status;
+        repaint (recordStatusArea);
+    }
+
     const auto muted = engine.getCore().areOutputsMuted();
     if (muted != lastMuted)
     {
@@ -315,9 +369,100 @@ void MainComponent::showAudioSettings()
 }
 
 //==============================================================================
+void MainComponent::toggleRecording()
+{
+    if (recording.getState() == RecordingManager::State::idle)
+    {
+        if (const auto error = recording.start(); error.isNotEmpty())
+            showError ("Can't record", error);
+    }
+    else
+    {
+        recording.stop();
+    }
+}
+
+void MainComponent::updateRecordButtons()
+{
+    const auto state = recording.getState();
+    const auto recordingNow = state == RecordingManager::State::recording;
+
+    recordButton.setIcon (recordingNow ? "square" : "record");
+    recordButton.setLabel (recordingNow ? "Stop" : state == RecordingManager::State::finishing ? juce::String::fromUTF8 ("Saving\xe2\x80\xa6") : "Record");
+    recordButton.setTooltip (recordingNow ? "Stop recording (Ctrl+R)" : "Record every armed Recorder node (Ctrl+R)");
+    recordButton.setHighlightColour (recordingNow ? std::optional (ui::theme::danger) : std::nullopt);
+    recordButton.setIconColour (recordingNow ? std::nullopt : std::optional (ui::theme::danger));
+    recordButton.setEnabled (state != RecordingManager::State::finishing);
+    markerButton.setEnabled (recordingNow);
+
+    lastRecordStatus = {};
+    resized();
+    timerCallback();
+}
+
+void MainComponent::showRecordingMenu()
+{
+    juce::PopupMenu preRoll;
+    for (auto seconds : { 0, 10, 30, 60 })
+        preRoll.addItem (seconds == 0 ? juce::String ("Off") : juce::String (seconds) + " seconds", ! recording.isRecording(),
+                         recording.getPreRollSeconds() == seconds, [this, seconds] { recording.setPreRollSeconds (seconds); });
+
+    juce::PopupMenu lowDisk;
+    for (auto minutes : { 10, 30, 60, 120 })
+        lowDisk.addItem ("Less than " + (minutes < 60 ? juce::String (minutes) + " min" : juce::String (minutes / 60) + " h") + " left",
+                         true, recording.getLowDiskMinutes() == minutes, [this, minutes] { recording.setLowDiskMinutes (minutes); });
+
+    juce::PopupMenu recent;
+    for (const auto& path : recording.getRecentTakes())
+        recent.addItem (juce::File (path).getFileName(), [path] { juce::File (path).startAsProcess(); });
+
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("Recording");
+    menu.addSubMenu ("Pre-roll (keep audio from before Record)", preRoll);
+    menu.addSubMenu ("Warn when disk space is low", lowDisk);
+    menu.addSeparator();
+    menu.addItem ("Open takes folder", [this]
+    {
+        const auto folder = recording.getTakesFolder();
+        folder.createDirectory();
+        folder.startAsProcess();
+    });
+    menu.addSubMenu ("Recent takes", recent, recent.containsAnyActiveItems());
+
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&recordMenuButton));
+}
+
+void MainComponent::checkForInterruptedTakes()
+{
+    const auto recovered = recording.recoverInterruptedTakes();
+    if (recovered.isEmpty())
+        return;
+
+    juce::StringArray names;
+    for (const auto& path : recovered)
+        names.add (juce::File (path).getFileName());
+
+    juce::MessageManager::callAsync ([safe = juce::Component::SafePointer (this), names]
+    {
+        if (safe != nullptr)
+            safe->showError ("Recovered a recording",
+                             "The app closed unexpectedly while recording. These takes were repaired and kept, "
+                             "up to the last couple of seconds before it closed:\n\n"
+                                 + names.joinIntoString ("\n"));
+    });
+}
+
 bool MainComponent::keyPressed (const juce::KeyPress& key)
 {
     const auto mods = key.getModifiers();
+
+    if (! mods.isCommandDown() && ! mods.isAltDown() && (key.getTextCharacter() == 'm' || key.getTextCharacter() == 'M')
+        && recording.getState() == RecordingManager::State::recording)
+    {
+        recording.addMarker();
+        return true;
+    }
+
     if (! mods.isCommandDown())
         return false;
 
@@ -332,6 +477,7 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
     if (code == 'O')                       { openSession(); return true; }
     if (code == 'N')                       { newSession(); return true; }
     if (code == 'M')                       { muteButton.triggerClick(); return true; }
+    if (code == 'R')                       { toggleRecording(); return true; }
     return false;
 }
 
@@ -346,12 +492,48 @@ void MainComponent::paint (juce::Graphics& g)
     g.fillRect (bar.removeFromBottom (1));
 
     // Separators between button groups.
-    for (auto* b : { &saveAsButton, &redoButton })
+    for (auto* b : { &saveAsButton, &redoButton, &recordMenuButton })
         g.fillRect (b->getRight() + 8, 12, 1, toolbarHeight - 24);
+
+    // Recording time, or the space left.
+    {
+        auto r = recordStatusArea;
+        const auto state = recording.getState();
+        const auto low = recording.isDiskLow();
+        const auto left = recording.getTimeLeftText();
+
+        if (state == RecordingManager::State::recording)
+        {
+            g.setColour (ui::theme::danger);
+            g.fillEllipse (r.removeFromLeft (10).toFloat().withSizeKeepingCentre (8.0f, 8.0f));
+            r.removeFromLeft (6);
+            const auto seconds = (int) recording.getRecordedSeconds();
+            g.setColour (ui::theme::text);
+            g.setFont (ui::theme::font (14.0f, ui::theme::Weight::semiBold, true));
+            const auto time = juce::String::formatted ("%02d:%02d:%02d", seconds / 3600, (seconds / 60) % 60, seconds % 60);
+            g.drawText (time, r.removeFromLeft (70), juce::Justification::centredLeft, false);
+            if (left.isNotEmpty())
+            {
+                g.setColour (low ? ui::theme::warning : ui::theme::textMuted);
+                g.setFont (ui::theme::font (11.5f));
+                g.drawText (left + " left", r, juce::Justification::centredLeft, true);
+            }
+        }
+        else
+        {
+            g.setFont (ui::theme::font (11.5f));
+            g.setColour (low ? ui::theme::warning : ui::theme::textMuted);
+            const auto text = state == RecordingManager::State::finishing ? juce::String ("Finishing the files")
+                              : recording.getNumArmed() == 0             ? juce::String ("No armed recorders")
+                              : left.isNotEmpty()                        ? left + " of space"
+                                                                         : juce::String();
+            g.drawText (text, r, juce::Justification::centredLeft, true);
+        }
+    }
 
     // Session name, centred in the space between the groups.
     const auto name = currentFile != juce::File() ? currentFile.getFileNameWithoutExtension() : juce::String ("Untitled");
-    auto area = juce::Rectangle<int>::leftTopRightBottom (addButton.getRight() + 16, 0, muteButton.getX() - 16, toolbarHeight);
+    auto area = juce::Rectangle<int>::leftTopRightBottom (addButton.getRight() + 16, 0, recordButton.getX() - 16, toolbarHeight);
     g.setFont (ui::theme::font (13.0f, ui::theme::Weight::semiBold));
     g.setColour (ui::theme::text);
     g.drawText (name + (modified ? " *" : ""), area, juce::Justification::centred, true);
@@ -379,6 +561,12 @@ void MainComponent::resized()
 
     place (settingsButton, true);
     place (muteButton, true);
+    bar.removeFromRight (13);
+    place (recordMenuButton, true);
+    place (markerButton, true);
+    recordStatusArea = bar.removeFromRight (150).withTrimmedLeft (6);
+    recordStatusArea = { recordStatusArea.getX(), 0, recordStatusArea.getWidth(), toolbarHeight };
+    place (recordButton, true);
 
     statusBar.setBounds (area.removeFromBottom (StatusBar::height));
     inspector.setBounds (area.removeFromRight (ui::Inspector::preferredWidth));

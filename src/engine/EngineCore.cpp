@@ -79,6 +79,13 @@ void EngineCore::process (const float* const* inputs, int numInputs, float* cons
 
     auto* graph = handoff.acquire();
 
+    // Latched once per callback, so every recorder starts and stops on the same sample.
+    if (const auto take = requestedTake.load (std::memory_order_acquire); take != activeTake)
+    {
+        activeTake = take;
+        takeSamples = 0;
+    }
+
     const auto muted = outputsMuted.load (std::memory_order_relaxed);
     outputGain.setTarget (muted ? 0.0f : 1.0f);
 
@@ -103,6 +110,7 @@ void EngineCore::process (const float* const* inputs, int numInputs, float* cons
             ctx.deviceInputs = { inputPointers.data(), numInputs, n };
             ctx.deviceOutputs = { outputPointers.data(), numOutputs, n };
             ctx.samplePosition = samplePosition;
+            ctx.recordTake = activeTake;
 
             graph->process (ctx);
         }
@@ -140,6 +148,10 @@ void EngineCore::process (const float* const* inputs, int numInputs, float* cons
 
     if (load > peakCpuLoad.load (std::memory_order_relaxed))
         peakCpuLoad.store (load, std::memory_order_relaxed);
+
+    if (activeTake != 0)
+        takeSamples += numSamples;
+    recordedSamples.store (activeTake != 0 ? takeSamples : -1, std::memory_order_relaxed);
 
     currentBlock.store (numSamples, std::memory_order_relaxed);
     callbacks.fetch_add (1, std::memory_order_relaxed);

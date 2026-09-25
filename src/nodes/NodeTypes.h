@@ -102,6 +102,7 @@ namespace types
     inline constexpr std::string_view bundle         = "route.bundle";
     inline constexpr std::string_view unbundle       = "route.unbundle";
     inline constexpr std::string_view meter          = "an.meter";
+    inline constexpr std::string_view recorder       = "rec.recorder";
 }
 
 inline constexpr int maxPortChannels = 64;

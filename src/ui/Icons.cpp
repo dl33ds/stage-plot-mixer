@@ -81,6 +81,12 @@ void IconButton::setHighlightColour (std::optional<juce::Colour> colour)
     repaint();
 }
 
+void IconButton::setIconColour (std::optional<juce::Colour> colour)
+{
+    iconColour = colour;
+    repaint();
+}
+
 int IconButton::getIdealWidth (int height) const
 {
     auto width = height;
@@ -109,7 +115,7 @@ void IconButton::paintButton (juce::Graphics& g, bool highlighted, bool down)
     if (label.isEmpty())
         iconArea = getLocalBounds().toFloat().withSizeKeepingCentre (iconSize, iconSize);
 
-    drawIcon (g, icon, iconArea, colour);
+    drawIcon (g, icon, iconArea, iconColour && isEnabled() ? *iconColour : colour);
 
     if (label.isNotEmpty())
     {

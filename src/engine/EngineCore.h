@@ -43,6 +43,14 @@ public:
     void setOutputsMuted (bool shouldMute) noexcept { outputsMuted.store (shouldMute, std::memory_order_relaxed); }
     bool areOutputsMuted() const noexcept { return outputsMuted.load (std::memory_order_relaxed); }
 
+    /** Starts (non-zero id) or stops (0) recording. Every recorder sees the change at the
+        start of the same callback, so takes are sample-aligned.
+    */
+    void setRecordTake (std::uint32_t takeId) noexcept { requestedTake.store (takeId, std::memory_order_release); }
+
+    /** Samples processed since the current take started, or -1 if not recording. */
+    std::int64_t getRecordedSamples() const noexcept { return recordedSamples.load (std::memory_order_relaxed); }
+
     /** Snapshot of the counters; resets the peak CPU figure. */
     EngineStats takeStats() noexcept;
 
@@ -64,6 +72,8 @@ public:
 private:
     GraphHandoff handoff;
     std::atomic<bool> outputsMuted { true };
+    std::atomic<std::uint32_t> requestedTake { 0 };
+    std::atomic<std::int64_t> recordedSamples { -1 };
 
     double sampleRate = 48000.0;
     int expectedBlock = 0;
@@ -71,6 +81,8 @@ private:
     // Audio thread state.
     Smoother outputGain;
     std::int64_t samplePosition = 0;
+    std::uint32_t activeTake = 0;
+    std::int64_t takeSamples = 0;
     double lastCallbackTime = -1.0;
     std::vector<float*> inputPointers, outputPointers;
     std::vector<float> silence;
