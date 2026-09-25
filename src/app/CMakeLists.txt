@@ -17,6 +17,7 @@ target_sources(StagePlotMixer PRIVATE
     SimulatedAudioDevice.cpp
     StatusBar.cpp
     ../ui/Dialogs.cpp
+    ../ui/DragSlider.cpp
     ../ui/FaceComponent.cpp
     ../ui/GraphCanvas.cpp
     ../ui/Icons.cpp

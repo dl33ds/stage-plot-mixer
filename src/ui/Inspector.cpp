@@ -5,6 +5,7 @@
 
 #include "engine/Smoother.h"
 
+#include "ui/DragSlider.h"
 #include "ui/Icons.h"
 #include "ui/ParamFormat.h"
 #include "ui/Theme.h"
@@ -48,6 +49,8 @@ float wireDbToLinear (float db)
 {
     return db <= -60.0f ? 0.0f : engine::decibelsToGain (db);
 }
+
+constexpr auto dragHint = " - drag to change (Shift for fine), double-click to reset";
 
 void styleSlider (juce::Slider& s)
 {
@@ -375,11 +378,11 @@ void Inspector::buildForNode (graph::NodeId id)
             continue;
         }
 
-        auto slider = std::make_unique<juce::Slider>();
+        auto slider = std::make_unique<DragSlider>();
         auto* s = slider.get();
         styleSlider (*s);
         configureSlider (*s, spec);
-        s->setTooltip (tooltip);
+        s->setTooltip (lockStructure && spec.structural ? tooltip : tooltip + dragHint);
         s->onDragStart = [this, spec] { session.beginAction ("Change " + juce::String (spec.name)); };
         s->onValueChange = [this, id, i, s, spec]
         {
@@ -431,10 +434,11 @@ void Inspector::buildForWire (graph::WireId wireId)
         }
 
     addHeading ("Level");
-    auto slider = std::make_unique<juce::Slider>();
+    auto slider = std::make_unique<DragSlider>();
     auto* s = slider.get();
     styleSlider (*s);
     configureWireGainSlider (*s);
+    s->setTooltip (s->getTooltip() + dragHint);
     s->onDragStart = [this] { session.beginAction ("Change wire gain"); };
     s->onValueChange = [this, wireId, s]
     {

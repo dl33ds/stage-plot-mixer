@@ -3,6 +3,7 @@
 
 #include "ui/NodeComponent.h"
 
+#include "ui/DragSlider.h"
 #include "ui/ParamFormat.h"
 #include "ui/Theme.h"
 
@@ -44,18 +45,16 @@ juce::String toggleText (const nodes::ParamSpec& spec)
 } // namespace
 
 //==============================================================================
-class NodeComponent::InlineSlider final : public juce::Slider
+class NodeComponent::InlineSlider final : public DragSlider
 {
 public:
     explicit InlineSlider (const nodes::ParamSpec& s) : spec (s)
     {
         setSliderStyle (juce::Slider::LinearBar);
         setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
-        setSliderSnapsToMousePosition (false);
         setScrollWheelEnabled (false);
-        setMouseDragSensitivity (300);
         configureSlider (*this, spec);
-        setTooltip (juce::String (spec.name) + " - drag to change, double-click to reset. More in the inspector.");
+        setTooltip (juce::String (spec.name) + " - drag to change (Shift for fine), double-click to reset. More in the inspector.");
     }
 
     void paint (juce::Graphics& g) override

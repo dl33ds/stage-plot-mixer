@@ -3,6 +3,7 @@
 
 #include "ui/FaceComponent.h"
 
+#include "ui/DragSlider.h"
 #include "ui/Icons.h"
 #include "ui/ParamFormat.h"
 #include "ui/Theme.h"
@@ -93,7 +94,7 @@ public:
 } // namespace
 
 //==============================================================================
-class FaceComponent::Knob final : public juce::Slider
+class FaceComponent::Knob final : public DragSlider
 {
 public:
     explicit Knob (const nodes::ParamSpec& s) : spec (s)
@@ -101,7 +102,6 @@ public:
         setSliderStyle (juce::Slider::RotaryVerticalDrag);
         setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
         setScrollWheelEnabled (false);
-        setMouseDragSensitivity (200);
         configureSlider (*this, spec);
     }
 
@@ -148,14 +148,13 @@ public:
     const nodes::ParamSpec spec;
 };
 
-class FaceComponent::Fader final : public juce::Slider
+class FaceComponent::Fader final : public DragSlider
 {
 public:
     explicit Fader (const nodes::ParamSpec& s) : spec (s)
     {
         setSliderStyle (juce::Slider::LinearVertical);
         setTextBoxStyle (juce::Slider::NoTextBox, true, 0, 0);
-        setSliderSnapsToMousePosition (false);
         setScrollWheelEnabled (false);
         configureSlider (*this, spec);
         setColour (juce::Slider::backgroundColourId, theme::background);
@@ -312,7 +311,7 @@ void FaceComponent::rebuild (const std::vector<Item>& newItems)
             auto* s = f.get();
             s->onDragStart = [this, s] { session.beginAction ("Change " + juce::String (s->spec.name)); };
             s->onValueChange = [this, s, item] { setParam (item, (float) s->getValue(), ! s->isMouseButtonDown()); };
-            s->setTooltip (tooltip + ". Double-click to reset.");
+            s->setTooltip (tooltip + ". Drag to change (Shift for fine); double-click to reset.");
             control.component = std::move (f);
         }
         else switch (spec.kind)
@@ -358,7 +357,7 @@ void FaceComponent::rebuild (const std::vector<Item>& newItems)
                 s->label = label;
                 s->onDragStart = [this, s] { session.beginAction ("Change " + juce::String (s->spec.name)); };
                 s->onValueChange = [this, s, item] { setParam (item, (float) s->getValue(), ! s->isMouseButtonDown()); };
-                s->setTooltip (tooltip + ". Drag up or down; double-click to reset.");
+                s->setTooltip (tooltip + ". Drag up or down to change (Shift for fine); double-click to reset.");
                 control.component = std::move (k);
                 break;
             }

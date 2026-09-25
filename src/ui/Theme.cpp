@@ -205,7 +205,9 @@ void LookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int width, 
 
     const auto horizontal = style == juce::Slider::LinearHorizontal;
     const auto bounds = juce::Rectangle<float> ((float) x, (float) y, (float) width, (float) height);
-    const auto thickness = 4.0f;
+    // Hovering (or dragging) brightens the track and grows the handle, so it's clear the slider will respond.
+    const auto hot = slider.isEnabled() && slider.isMouseOverOrDragging();
+    const auto thickness = hot ? 5.0f : 4.0f;
     const auto track = horizontal ? bounds.withSizeKeepingCentre (bounds.getWidth(), thickness)
                                   : bounds.withSizeKeepingCentre (thickness, bounds.getHeight());
 
@@ -221,14 +223,23 @@ void LookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int width, 
                              : juce::Rectangle<float>::leftTopRightBottom (track.getX(), juce::jmin (origin, sliderPos),
                                                                            track.getRight(), juce::jmax (origin, sliderPos));
 
-    g.setColour (slider.findColour (juce::Slider::trackColourId).withMultipliedAlpha (slider.isEnabled() ? 1.0f : 0.4f));
+    const auto trackColour = slider.findColour (juce::Slider::trackColourId);
+    g.setColour (! slider.isEnabled() ? trackColour.withMultipliedAlpha (0.4f) : hot ? trackColour.brighter (0.3f) : trackColour);
     g.fillRoundedRectangle (filled, thickness / 2.0f);
 
-    const auto thumb = 12.0f;
+    const auto thumb = hot ? 13.0f : 12.0f;
     const auto centre = horizontal ? juce::Point<float> (sliderPos, bounds.getCentreY())
                                    : juce::Point<float> (bounds.getCentreX(), sliderPos);
+    const auto thumbArea = juce::Rectangle<float> (thumb, thumb).withCentre (centre);
+
+    if (hot)
+    {
+        g.setColour (accent.withAlpha (0.3f));
+        g.fillEllipse (thumbArea.expanded (2.0f));
+    }
+
     g.setColour (slider.findColour (juce::Slider::thumbColourId));
-    g.fillEllipse (juce::Rectangle<float> (thumb, thumb).withCentre (centre));
+    g.fillEllipse (thumbArea);
 }
 
 void LookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool, int, int, int, int, juce::ComboBox& box)

@@ -480,6 +480,7 @@ Phase 5 is largely independent of 3–4 and can move earlier if needed.
 ---
 
 ## 12. Change History
+- **v0.8.1**: Slider feel. Every slider (node, face and Inspector) now follows the mouse 1:1 from where it is and never jumps to the click point; Shift+drag is fine control (1/10 speed); knobs take 200 px for a full turn. Inspector sliders show a hover state, and slider tooltips say how to drag.
 - **v0.8**: Phase 4 (Hierarchy & faces) built; see *As built* in §5.2. Session files are now version 2 (older files still open). The Channel Strip template is Trim → Fader → Pan until the EQ and dynamics nodes exist.
 - **v0.7**: Phase 3 (Recording) built; see *As built* in §5.4. Pre-roll choices are off/10/30/60 s rather than 30–120 s, to keep memory use modest on 32 channels.
 - **v0.6**: App Audio capture (the old Phase 7) removed from the plan and moved to the backlog (§14.1). Later phases renumbered: Polish & release is now Phase 7, Cross-platform is Phase 8.
