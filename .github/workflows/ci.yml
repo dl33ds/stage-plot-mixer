@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows (MSVC)
+            os: windows-latest
+            artifact: spm-diag-windows-x64
+          - name: macOS (Clang)
+            os: macos-latest
+            artifact: spm-diag-macos
+          - name: Linux (GCC)
+            os: ubuntu-latest
+            artifact: spm-diag-linux-x64
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libasound2-dev libjack-jackd2-dev
+
+      - name: Configure
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cmake -S . -B build
+          else
+            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          fi
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Unit tests
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Smoke test (device listing, no hardware)
+        shell: bash
+        run: |
+          exe=$(find build -type f \( -name 'spm-diag' -o -name 'spm-diag.exe' \) -path '*Release*' | head -1)
+          "$exe" --version
+          "$exe" --list --report ci-report.txt
+          cat ci-report.txt | head -40
+
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p dist
+          exe=$(find build -type f \( -name 'spm-diag' -o -name 'spm-diag.exe' \) -path '*Release*' | head -1)
+          cp "$exe" dist/
+          cp docs/TESTING.md dist/README-TESTING.md
+          cp LICENSE dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/
