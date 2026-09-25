@@ -26,7 +26,7 @@ cmake --build build --config Release
 ctest --test-dir build -C Release
 ```
 
-On Linux, first install `libasound2-dev` and `libjack-jackd2-dev`.
+On Linux, first install `libasound2-dev`, `libjack-jackd2-dev`, `libfreetype-dev` and `libfontconfig1-dev`.
 
 ## Layout
 
