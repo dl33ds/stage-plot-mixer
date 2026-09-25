@@ -2,7 +2,7 @@
 
 *A multi-channel real-time audio mixer & recorder*
 
-**Status:** v0.5 (requirements confirmed; Phase 1 in progress)
+**Status:** v0.6 (requirements confirmed; Phase 2 in testing)
 **Target platforms:** Windows 10 / 11 (x64) first; macOS and Linux later
 **License:** GNU AGPLv3 (see [§3.5](#35-licensing-open-source))
 **Repository:** <https://github.com/dl33ds/stage-plot-mixer>
@@ -34,10 +34,10 @@ A desktop application for **live sound and home studio** use that:
 | R6 | Future deployment on other OSes | JUCE + isolated platform layer (§5.9) |
 | R7 | **Single ASIO device at a time** (default) | §3.2 |
 | R8 | 32 channels @ 48 kHz | Sizing target (§7) |
-| R9 | **Record only**, no playback/editing | Audio from other apps comes in as an input source (§5.6) |
+| R9 | **Record only**, no playback/editing | Recording (§5.4). Audio from other apps as an input is in the backlog (§14) |
 | R10 | Third-party plugins: **VST3 and LADSPA** | §5.7 (VST2 not needed) |
 | R11 | Clean, modern, flat, intuitive; **legible font** | §5.2 (UI), font: Inter |
-| R12 | Capture and record from **multiple points** in the signal paths | Any number of Recorder / App Audio nodes (§5.4, §5.6) |
+| R12 | Capture and record from **multiple points** in the signal paths | Any number of Recorder nodes, anywhere in the graph (§5.4) |
 | R13 | No traditional mixing-console view | The node graph and user-built panels are the only views |
 
 ### 1.2 Out of scope (v1)
@@ -89,7 +89,6 @@ JUCE is the industry-standard C++ audio framework. It provides:
   - **ASIO** (default): FireWire 1814, ProFire Lightbridge, Scarlett Solo
   - **WASAPI**: Windows system audio devices (built-in sound, HDMI, Bluetooth, etc.)
 - The primary device sets the **master clock** and sample rate (48 kHz target).
-- **One exception:** audio captured from other applications (§5.6) runs on Windows' own clock. It enters through a drift-compensating resampler (ASRC). This works alongside ASIO and is not a second hardware device.
 
 ### 3.3 Target hardware
 
@@ -104,10 +103,10 @@ JUCE is the industry-standard C++ audio framework. It provides:
 - The app only talks to the **ASIO driver**, never to FireWire directly. If the vendor driver works in Windows, the app works.
 - The PC needs a FireWire (IEEE 1394) PCIe card. **Texas Instruments chipset** cards are by far the most reliable for audio. Some older drivers also need Microsoft's *legacy 1394 host controller driver* instead of the default Windows 10/11 one. Phase 0 checks this on the actual PC.
 - The Lightbridge uses ADAT, which gives 8 channels per cable at 48 kHz. At 96 kHz the channel count halves, which is another reason to target 48 kHz.
-- Future macOS port: **macOS 26 removed FireWire support**, so these two devices will not work on current macOS. Linux support depends on the FFADO project's support for each device (checked in Phase 9).
+- Future macOS port: **macOS 26 removed FireWire support**, so these two devices will not work on current macOS. Linux support depends on the FFADO project's support for each device (checked in Phase 8).
 
 ### 3.4 Windows versions
-Windows 10 (22H2) and Windows 11 (23H2+), x64. Capturing audio from a specific application (§5.6) needs Windows 10 build 19041 (version 2004) or later.
+Windows 10 (22H2) and Windows 11 (23H2+), x64.
 
 ### 3.5 Licensing (open source)
 
@@ -138,8 +137,7 @@ Windows 10 (22H2) and Windows 11 (23H2+), x64. Capturing audio from a specific a
                 │                                             │ compiled graph (atomic swap)
 ┌───────────────┴─────────────────────────────────────────────▼────────────────────────┐
 │                         AUDIO ENGINE (real-time thread, driven by ASIO/WASAPI)        │
-│  Device In ─┐                                                                         │
-│  App Audio ─┴► ASRC ─► Flattened Graph (inputs, FX, plugins, buses, taps) ─► Device Out│
+│  Device In ─► Flattened Graph (inputs, FX, plugins, buses, taps) ─► Device Out         │
 └──────────────┬────────────────────────────────────────────┬───────────────────────────┘
                │ lock-free ring buffers                     │ plugin I/O (shared memory)
       ┌────────▼─────────┐                        ┌──────────▼──────────┐
@@ -155,7 +153,6 @@ Windows 10 (22H2) and Windows 11 (23H2+), x64. Capturing audio from a specific a
 | **Audio (real-time)** | Driver callback: runs the compiled graph, computes meters, pushes record data | **No** allocation, locks, file I/O, logging or UI calls |
 | **Message / UI** | Drawing, input, model edits | Never blocks the audio thread |
 | **Disk writer** | Drains record ring buffers to files | Absorbs several seconds of disk stall |
-| **App-audio capture** | WASAPI loopback reads → ASRC FIFO | One per captured source |
 | **Device manager** | Hot-plug, device reopen, sample-rate changes | |
 | **Workers** | Graph compilation, plugin scanning, file finalisation | |
 
@@ -172,7 +169,6 @@ Windows 10 (22H2) and Windows 11 (23H2+), x64. Capturing audio from a specific a
 /graph          – graph model, hierarchy, validation, compiler (flatten, sort, PDC)
 /nodes          – built-in node types (I/O, bus, send, split, gain, EQ, dynamics…)
 /plugins        – VST3 + LADSPA hosting, scanning, sandbox process
-/capture        – app/system audio capture (WASAPI loopback, process loopback)
 /recording      – tap buffers, disk writer, BWF/RF64, takes, recovery
 /metering       – meter maths, ballistics, lock-free transport
 /ui             – design system, graph editor, panels/tear-off, meter views
@@ -213,7 +209,7 @@ The graph is the core of the app. **What you see in the editor is the signal flo
 
 | Category | Nodes |
 |---|---|
-| **Sources** | Hardware Input (device channels), **App Audio** (§5.6), Test Generator (tone, pink noise, latency ping) |
+| **Sources** | Hardware Input (device channels), Test Generator (tone, pink noise, latency ping) |
 | **Destinations** | Hardware Output, Recorder (§5.4) |
 | **Mixing** | Bus (N-in → 1 mix), Send (pre/post fader), Pan/Balance, Fader, Mute/Solo, Channel Strip (template) |
 | **Routing** | Splitter/Router, Channel Pick (take channels 3–4 from a bundle), Bundle/Unbundle, **External Insert** (outboard gear loop with latency measurement) |
@@ -335,20 +331,9 @@ MySession/
 - **Device remap:** opening a session made on another interface prompts to map old channels to new ones
 - Status bar: device, sample rate, buffer, CPU load, xrun count, disk space
 
-### 5.6 Audio from other applications (R9)
+### 5.6 Audio from other applications
 
-The requirement: files played in other programs (media player, browser, backing-track software) must be usable as **inputs** to the mixer.
-
-**App Audio source node:** two modes. **Any number of App Audio nodes** can run at once (e.g. one per application plus the whole-system mix), and each can feed any part of the graph. Together with Recorder nodes placed anywhere (§5.4), signals can be captured from as many points as needed (R12).
-
-| Mode | How it works | Requirement |
-|---|---|---|
-| **Specific application** ✅ | Captures only the chosen program's audio (e.g. VLC) using Windows *process loopback* capture | Windows 10 2004+ / Windows 11 |
-| **Whole system output** | Captures everything playing on a chosen Windows output device (WASAPI loopback) | Any Windows 10/11 |
-
-- The captured audio runs on Windows' clock, not the ASIO device's clock, so it passes through an **adaptive resampler (ASRC)** that follows the drift. This adds ~10–20 ms of latency **to that source only**, which is fine for pre-recorded material.
-- **Avoiding double playback:** the other application should play to a Windows device that isn't audible, or be muted locally. The node shows a hint about this. A bundled virtual audio device is a possible later addition.
-- Cross-platform later: macOS Core Audio taps (macOS 14.2+), Linux PipeWire monitor streams.
+Not planned for now. The design is kept in the backlog (§14.1).
 
 ### 5.7 Plugins (R10)
 
@@ -371,7 +356,7 @@ The requirement: files played in other programs (media player, browser, backing-
 - The engine keeps running while settings screens are open, except when changing device or sample rate
 
 ### 5.9 Cross-platform (R6)
-- Everything goes through JUCE abstractions; OS-specific code lives in `/platform` (app audio capture, FireWire notes, file dialogs if needed)
+- Everything goes through JUCE abstractions; OS-specific code lives in `/platform` (FireWire notes, file dialogs if needed)
 - Session files are platform-neutral (UTF-8 JSON, relative paths)
 - CI builds Windows, macOS and Linux from Phase 1
 - macOS: CoreAudio; signing + notarisation; **no FireWire**
@@ -394,7 +379,7 @@ The requirement: files played in other programs (media player, browser, backing-
 | Area | Target |
 |---|---|
 | Channels | 32 in / 32 out @ 48 kHz (ProFire Lightbridge) |
-| Latency | No added latency beyond the driver buffer, except sandboxed plugins, PDC and App Audio; 64–128-sample buffers usable |
+| Latency | No added latency beyond the driver buffer, except sandboxed plugins and PDC; 64–128-sample buffers usable |
 | Stability | 8-hour soak test: 32 ch recording raw + processed, 128 samples, zero xruns |
 | CPU | < 25% of one core for 32-ch pass-through + metering (excluding plugins) |
 | UI | 60 fps with 64 meters visible and a 200-node graph |
@@ -429,12 +414,11 @@ Each phase ends with a working, demonstrable build.
 | **4** | Hierarchy & faces | Group nodes, breadcrumb navigation, templates, channel-strip template, faces, tear-off windows, panels, face groups, layouts, Show Lock | A full "Show" layout survives save/restore and monitor changes |
 | **5** | Metering suite | All styles/scales/ballistics, peak-hold/clip, meter presets, LUFS/true-peak | All meter types configurable; 64 meters at 60 fps within budget |
 | **6** | Processing & plugins | Built-in effects, External Insert with latency ping, PDC, VST3 hosting, cross-platform LADSPA host with auto-generated faces, plugin scanner, **plugin sandbox** | Parallel paths stay sample-aligned; a crashing plugin doesn't stop audio or recording |
-| **7** | App Audio capture | Per-application and whole-system loopback nodes, ASRC | 1-hour capture from a media player with no drift/clicks, alongside the ASIO device |
-| **8** | Polish & release (Windows) | First-run setup, tooltips/help, command palette, keyboard shortcuts, light theme, installer (Inno Setup or MSIX), code signing, crash reporter, user guide, hardware compatibility list | Clean install and a full live/studio session on the target PC |
-| **9** | Cross-platform | macOS build (signing/notarisation, Core Audio taps), Linux build (ALSA/JACK/PipeWire, FFADO check) | Feature parity where hardware allows |
-| **Later** | Extensions | Multi-device aggregation, VST2 (if cleared), LV2/CLAP, MIDI control surfaces, FLAC recording, virtual audio device, spectrum analyzer, remote control | — |
+| **7** | Polish & release (Windows) | First-run setup, tooltips/help, command palette, keyboard shortcuts, light theme, installer (Inno Setup or MSIX), code signing, crash reporter, user guide, hardware compatibility list | Clean install and a full live/studio session on the target PC |
+| **8** | Cross-platform | macOS build (signing/notarisation), Linux build (ALSA/JACK/PipeWire, FFADO check) | Feature parity where hardware allows |
+| **Later** | Extensions | Multi-device aggregation, VST2 (if cleared), LV2/CLAP, MIDI control surfaces, FLAC recording, spectrum analyzer, remote control; see also the backlog (§14) | — |
 
-Phases 5 and 7 are largely independent of 3–4 and can move earlier if needed.
+Phase 5 is largely independent of 3–4 and can move earlier if needed.
 
 ---
 
@@ -446,7 +430,6 @@ Phases 5 and 7 are largely independent of 3–4 and can move earlier if needed.
 | No direct access to target hardware during development | Slower debugging | Diagnostics tool, "Export diagnostics", fake-device test harness, CI Windows builds |
 | Plugin crash during a live show | Loss of audio | Sandbox option, scanner process, recording on a separate thread |
 | Graph edits during a live show | Clicks/dropouts | Atomic swap + wire crossfade + Show Lock |
-| App Audio clock drift | Clicks over time | Adaptive ASRC with drift tracking; soak test |
 | Node-editor usability with 32+ channels | Wire spaghetti | Channel bundles, groups/hierarchy, templates, minimap |
 | Licence compatibility | Can't publish | Verify all SDK terms in Phase 0 |
 
@@ -464,7 +447,7 @@ Phases 5 and 7 are largely independent of 3–4 and can move earlier if needed.
 | D6 | Hierarchical node graph is the primary UI; faces tear off into panels | **Accepted** |
 | D7 | Cycles blocked; PDC in compiler; flattening of groups | Proposed |
 | D8 | Plugins: VST3 + cross-platform LADSPA; sandbox option | **Accepted** (no VST2) |
-| D9 | App Audio via Windows process/system loopback + ASRC | Proposed |
+| D9 | App Audio via Windows process/system loopback + ASRC | **Deferred** (backlog, §14.1) |
 | D10 | Record only, no playback | **Accepted** |
 | D11 | Open source, AGPLv3 | **Accepted** |
 | D13 | No console view; node graph + user panels only | **Accepted** |
@@ -474,6 +457,7 @@ Phases 5 and 7 are largely independent of 3–4 and can move earlier if needed.
 ---
 
 ## 12. Change History
+- **v0.6**: App Audio capture (the old Phase 7) removed from the plan and moved to the backlog (§14.1). Later phases renumbered: Polish & release is now Phase 7, Cross-platform is Phase 8.
 - **v0.5**: Phase 0b (FireWire) deferred until the hardware arrives; it still runs alongside later phases and is required before release. Phase 1's 1-hour 32-channel hardware test moves to Phase 0b; Phase 1 instead uses a simulated 32-channel device plus a 10-minute Scarlett run.
 - **v0.4**: Confirmed the multiple-capture-points interpretation (R12). From the first Scarlett test run: Windows shared-mode audio (fixed 10 ms buffer, dropouts) is confirmed unsuitable for live paths, and spm-diag now ranks and recommends ASIO. Scarlett Solo on Focusrite USB ASIO ran cleanly at 192, 128 and 64 samples (reported round trip 920 / 696 / 376 samples). USB 1 ms frame jitter is now tolerated by the late-callback check.
 - **v0.3**: Named *Stage Plot Mixer*; public repo; AGPLv3 accepted; JUCE 9.0.2 (bundles ASIO headers); VST3 + LADSPA only; multiple capture points; no console view; test hardware is the Scarlett Solo for now, with FireWire validation later (Phase 0b).
@@ -484,4 +468,33 @@ Phases 5 and 7 are largely independent of 3–4 and can move earlier if needed.
 
 ## 13. Open Questions
 
-None at present. (Resolved in v0.4: capture points (R12) confirmed as any number of App Audio nodes plus Recorder nodes anywhere in the graph.)
+None at present. (Resolved in v0.4: capture points (R12) confirmed as Recorder nodes anywhere in the graph. App Audio nodes were part of that answer and moved to the backlog in v0.6.)
+
+---
+
+## 14. Backlog
+
+Ideas that are designed or discussed but not scheduled. Each one can become a phase later if it's needed.
+
+### 14.1 App Audio capture (was Phase 7)
+
+*Removed from the plan in v0.6: not a requirement for now.*
+
+The requirement: files played in other programs (media player, browser, backing-track software) must be usable as **inputs** to the mixer.
+
+**App Audio source node:** two modes. **Any number of App Audio nodes** can run at once (e.g. one per application plus the whole-system mix), and each can feed any part of the graph. Together with Recorder nodes placed anywhere (§5.4), signals can be captured from as many points as needed (R12).
+
+| Mode | How it works | Requirement |
+|---|---|---|
+| **Specific application** ✅ | Captures only the chosen program's audio (e.g. VLC) using Windows *process loopback* capture | Windows 10 2004+ / Windows 11 |
+| **Whole system output** | Captures everything playing on a chosen Windows output device (WASAPI loopback) | Any Windows 10/11 |
+
+- The captured audio runs on Windows' clock, not the ASIO device's clock, so it passes through an **adaptive resampler (ASRC)** that follows the drift. This adds ~10–20 ms of latency **to that source only**, which is fine for pre-recorded material.
+- **Avoiding double playback:** the other application should play to a Windows device that isn't audible, or be muted locally. The node shows a hint about this. A bundled virtual audio device is a possible later addition.
+- Cross-platform later: macOS Core Audio taps (macOS 14.2+), Linux PipeWire monitor streams.
+
+- **Threading:** one capture thread per App Audio node (WASAPI loopback reads → ASRC FIFO). The audio thread only reads the FIFO.
+- **Where the code would go:** a `/capture` module (WASAPI loopback, process loopback), Windows-only at first.
+- **Risk:** clock drift causing clicks over time. Mitigation: adaptive ASRC with drift tracking, plus a soak test.
+- **Exit test if scheduled:** a 1-hour capture from a media player with no drift or clicks, alongside the ASIO device.
+- **Related:** a bundled virtual audio device (to avoid double playback) would belong with this.
